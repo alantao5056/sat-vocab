@@ -10,6 +10,7 @@ const Word = defineTable({
         memorized_count: column.number({ default: 0 }),
         fuzzy_count: column.number({ default: 0 }),
         unknown_count: column.number({ default: 0 }),
+        selection_weight: column.number({ default: 50 }),
     },
 });
 

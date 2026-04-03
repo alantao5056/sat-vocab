@@ -1,5 +1,5 @@
 ---
-import { db, Word, sql, asc } from "astro:db";
+import { db, Word, eq, inArray } from "astro:db";
 import Layout from "../layouts/Layout.astro";
 
 let isSuccess = false;
@@ -11,22 +11,37 @@ if (Astro.request.method === "POST") {
 
         if (ratingsJson) {
             const ratings = JSON.parse(ratingsJson);
+            const submittedIds = ratings.map((r: any) => r.id);
+            
+            // Fetch all words being updated at once
+            const wordsToUpdate = await db.select().from(Word).where(inArray(Word.id, submittedIds));
+            const wordsMap = new Map(wordsToUpdate.map((w) => [w.id, w]));
 
             // Iterate over ratings and update each word
             for (const { id, rating } of ratings) {
-                let updateSet: Record<string, any> = {
-                    total_views: sql`total_views + 1`,
-                };
+                const currentWord = wordsMap.get(id);
 
-                if (rating === "memorized") {
-                    updateSet.memorized_count = sql`memorized_count + 1`;
-                } else if (rating === "fuzzy") {
-                    updateSet.fuzzy_count = sql`fuzzy_count + 1`;
-                } else if (rating === "unknown") {
-                    updateSet.unknown_count = sql`unknown_count + 1`;
+                if (currentWord) {
+                    let newUnknown = currentWord.unknown_count;
+                    let newFuzzy = currentWord.fuzzy_count;
+                    let newMemorized = currentWord.memorized_count;
+
+                    if (rating === "memorized") newMemorized++;
+                    else if (rating === "fuzzy") newFuzzy++;
+                    else if (rating === "unknown") newUnknown++;
+
+                    const newWeight = Math.max(1, 10 + (newUnknown * 50) + (newFuzzy * 20) - (newMemorized * 30));
+
+                    const updateSet: Record<string, any> = {
+                        total_views: currentWord.total_views + 1,
+                        unknown_count: newUnknown,
+                        fuzzy_count: newFuzzy,
+                        memorized_count: newMemorized,
+                        selection_weight: newWeight,
+                    };
+
+                    await db.update(Word).set(updateSet).where(eq(Word.id, id));
                 }
-
-                await db.update(Word).set(updateSet).where(sql`id = ${id}`);
             }
             isSuccess = true;
         }
@@ -35,12 +50,54 @@ if (Astro.request.method === "POST") {
     }
 }
 
-// Fetch 10 words, prioritized by fewest views and then randomized
-const words = await db
-    .select()
-    .from(Word)
-    .orderBy(asc(Word.total_views), sql`RANDOM()`)
-    .limit(10);
+// Fetch ONLY ids and weights for all words to perform efficient weighted random selection
+const allWordsWeights = await db.select({
+    id: Word.id,
+    selection_weight: Word.selection_weight,
+}).from(Word);
+
+// Weighted random selection with binary search and rejection sampling
+const selectedIds = new Set<number>();
+if (allWordsWeights.length > 0) {
+    // 1. Build cumulative weights array once
+    const cumulativeWeights: number[] = [];
+    let currentTotal = 0;
+    for (const word of allWordsWeights) {
+        currentTotal += word.selection_weight;
+        cumulativeWeights.push(currentTotal);
+    }
+    const totalWeight = currentTotal;
+
+    // 2. Select 10 unique word IDs
+    const neededCount = Math.min(10, allWordsWeights.length);
+
+    while (selectedIds.size < neededCount && totalWeight > 0) {
+        // Random value between 0 and totalWeight
+        const r = Math.random() * totalWeight;
+
+        // Binary search for the index
+        let low = 0;
+        let high = cumulativeWeights.length - 1;
+        while (low < high) {
+            const mid = Math.floor((low + high) / 2);
+            if (cumulativeWeights[mid] <= r) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        
+        selectedIds.add(allWordsWeights[low].id);
+    }
+}
+
+// Fetch the full data for the 10 selected words
+const words = selectedIds.size > 0 
+    ? await db.select().from(Word).where(inArray(Word.id, Array.from(selectedIds))) 
+    : [];
+
+// Shuffle the fetched words so they aren't always in database ID order
+words.sort(() => Math.random() - 0.5);
 ---
 
 <Layout title="Study - SAT Vocab" headerSubtitle="Tap any card to view details">
