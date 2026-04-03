@@ -1,17 +1,65 @@
 ---
-import { db, Word } from "astro:db";
+import { db, Word, sql, asc } from "astro:db";
 import Layout from "../layouts/Layout.astro";
 
-const words = await db.select().from(Word).limit(10);
+let isSuccess = false;
+
+if (Astro.request.method === "POST") {
+    try {
+        const formData = await Astro.request.formData();
+        const ratingsJson = formData.get("ratings") as string;
+
+        if (ratingsJson) {
+            const ratings = JSON.parse(ratingsJson);
+
+            // Iterate over ratings and update each word
+            for (const { id, rating } of ratings) {
+                let updateSet: Record<string, any> = {
+                    total_views: sql`total_views + 1`,
+                };
+
+                if (rating === "memorized") {
+                    updateSet.memorized_count = sql`memorized_count + 1`;
+                } else if (rating === "fuzzy") {
+                    updateSet.fuzzy_count = sql`fuzzy_count + 1`;
+                } else if (rating === "unknown") {
+                    updateSet.unknown_count = sql`unknown_count + 1`;
+                }
+
+                await db.update(Word).set(updateSet).where(sql`id = ${id}`);
+            }
+            isSuccess = true;
+        }
+    } catch (error) {
+        console.error("Error processing submission:", error);
+    }
+}
+
+// Fetch 10 words, prioritized by fewest views and then randomized
+const words = await db
+    .select()
+    .from(Word)
+    .orderBy(asc(Word.total_views), sql`RANDOM()`)
+    .limit(10);
 ---
 
 <Layout title="Study - SAT Vocab" headerSubtitle="Tap any card to view details">
     <main>
+        {
+            isSuccess && (
+                <div class="success-banner">
+                    <span>🎉</span>
+                    <p>Progress saved! Here are your next 10 words.</p>
+                </div>
+            )
+        }
+
         <div class="word-grid">
             {
                 words.map((word) => (
                     <div
                         class="word-card"
+                        data-id={word.id}
                         data-word={word.word}
                         data-definition={word.definition}
                         data-example={word.example}
@@ -33,6 +81,11 @@ const words = await db.select().from(Word).limit(10);
         <div class="submit-container">
             <button class="submit-btn" id="submit-btn">Submit Progress</button>
         </div>
+
+        <!-- Hidden form for submission -->
+        <form id="ratings-form" method="POST" style="display: none;">
+            <input type="hidden" name="ratings" id="ratings-input" />
+        </form>
     </main>
 
     <!-- Word Detail Modal -->
@@ -98,6 +151,32 @@ const words = await db.select().from(Word).limit(10);
         max-width: 500px;
         margin: 0 auto;
         width: 100%;
+    }
+
+    .success-banner {
+        background-color: #ecfdf5;
+        border: 1px solid #10b981;
+        border-radius: 12px;
+        padding: 0.75rem 1.25rem;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        color: #065f46;
+        font-weight: 600;
+        font-size: 0.95rem;
+        animation: slideDown 0.3s ease-out;
+    }
+
+    @keyframes slideDown {
+        from {
+            transform: translateY(-15px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
     }
 
     .word-grid {
@@ -376,7 +455,7 @@ const words = await db.select().from(Word).limit(10);
 <script>
     const modalOverlay = document.getElementById("modal-overlay");
     const closeBtn = document.getElementById("close-btn");
-    const wordCards = document.querySelectorAll(".word-card");
+    const wordCards = document.querySelectorAll(".word-card") as NodeListOf<HTMLElement>;
 
     const modalTitle = document.getElementById("modal-title");
     const modalDefinition = document.getElementById("modal-definition");
@@ -388,13 +467,16 @@ const words = await db.select().from(Word).limit(10);
     const unratedCountSpan = document.getElementById("unrated-count");
     const warningRatingBtns = document.querySelectorAll("#warning-rating-container .modal-rating-btn");
     const warningCancelBtn = document.getElementById("warning-cancel-btn");
-    const warningConfirmBtn = document.getElementById("warning-confirm-btn");
-    const submitBtn = document.getElementById("submit-btn");
+    const warningConfirmBtn = document.getElementById("warning-confirm-btn") as HTMLButtonElement | null;
+    const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement | null;
 
-    let activeCard = null;
-    let warningSelectedRating = null;
+    const ratingsForm = document.getElementById("ratings-form") as HTMLFormElement | null;
+    const ratingsInput = document.getElementById("ratings-input") as HTMLInputElement | null;
 
-    function updateCardRating(card, rating) {
+    let activeCard: HTMLElement | null = null;
+    let warningSelectedRating: string | null = null;
+
+    function updateCardRating(card: HTMLElement, rating: string) {
         const options = card.querySelectorAll(".rating-option");
         options.forEach((opt) => {
             if (opt.getAttribute("data-rating") === rating) {
@@ -406,15 +488,15 @@ const words = await db.select().from(Word).limit(10);
         card.classList.remove("unrated-error");
     }
 
-    function openModal(card) {
+    function openModal(card: HTMLElement) {
         activeCard = card;
-        const word = card.getAttribute("data-word");
-        const definition = card.getAttribute("data-definition");
-        const example = card.getAttribute("data-example");
+        const word = card.getAttribute("data-word") || "";
+        const definition = card.getAttribute("data-definition") || "";
+        const example = card.getAttribute("data-example") || "";
 
-        modalTitle.textContent = word;
-        modalDefinition.textContent = definition;
-        modalExample.textContent = example;
+        if (modalTitle) modalTitle.textContent = word;
+        if (modalDefinition) modalDefinition.textContent = definition;
+        if (modalExample) modalExample.textContent = example;
 
         // Sync modal rating buttons with card selection
         const selectedCardRating = card.querySelector(".rating-option.selected")?.getAttribute("data-rating");
@@ -426,31 +508,32 @@ const words = await db.select().from(Word).limit(10);
             }
         });
 
-        modalOverlay.classList.add("active");
+        modalOverlay?.classList.add("active");
         document.body.style.overflow = "hidden";
     }
 
     function closeModal() {
-        modalOverlay.classList.remove("active");
+        modalOverlay?.classList.remove("active");
         document.body.style.overflow = "";
         activeCard = null;
     }
 
     wordCards.forEach((card) => {
         card.addEventListener("click", (e) => {
-            const ratingBtn = e.target.closest(".rating-option");
+            const target = e.target as HTMLElement;
+            const ratingBtn = target.closest(".rating-option");
             if (ratingBtn) {
                 const rating = ratingBtn.getAttribute("data-rating");
-                updateCardRating(card, rating);
+                if (rating) updateCardRating(card, rating);
                 return;
             }
             openModal(card);
         });
     });
 
-    closeBtn.addEventListener("click", closeModal);
+    closeBtn?.addEventListener("click", closeModal);
 
-    modalOverlay.addEventListener("click", (e) => {
+    modalOverlay?.addEventListener("click", (e) => {
         if (e.target === modalOverlay) {
             closeModal();
         }
@@ -459,7 +542,7 @@ const words = await db.select().from(Word).limit(10);
     modalRatingBtns.forEach((btn) => {
         btn.addEventListener("click", () => {
             const rating = btn.getAttribute("data-rating");
-            if (activeCard) {
+            if (activeCard && rating) {
                 updateCardRating(activeCard, rating);
             }
             closeModal();
@@ -467,22 +550,37 @@ const words = await db.select().from(Word).limit(10);
     });
 
     // Validation and Warning Modal Logic
-    submitBtn.addEventListener("click", () => {
+    submitBtn?.addEventListener("click", () => {
         const unratedCards = Array.from(wordCards).filter((card) => {
             return !card.querySelector(".rating-option.selected");
         });
 
         if (unratedCards.length > 0) {
             unratedCards.forEach((card) => card.classList.add("unrated-error"));
-            unratedCountSpan.textContent = unratedCards.length;
-            warningModalOverlay.classList.add("active");
+            if (unratedCountSpan) unratedCountSpan.textContent = unratedCards.length.toString();
+            warningModalOverlay?.classList.add("active");
             document.body.style.overflow = "hidden";
             // Reset warning modal state
             warningSelectedRating = null;
             warningRatingBtns.forEach((btn) => btn.classList.remove("selected"));
-            warningConfirmBtn.disabled = true;
+            if (warningConfirmBtn) warningConfirmBtn.disabled = true;
         } else {
-            alert("Progress submitted successfully!");
+            // All cards are rated, proceed with submission
+            const ratings = Array.from(wordCards).map((card) => {
+                const id = card.getAttribute("data-id") || "0";
+                const rating = card.querySelector(".rating-option.selected")?.getAttribute("data-rating") || "unknown";
+                return { id: parseInt(id), rating };
+            });
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = "Submitting...";
+            }
+
+            if (ratingsForm && ratingsInput) {
+                ratingsInput.value = JSON.stringify(ratings);
+                ratingsForm.submit();
+            }
         }
     });
 
@@ -490,25 +588,25 @@ const words = await db.select().from(Word).limit(10);
         btn.addEventListener("click", () => {
             warningSelectedRating = btn.getAttribute("data-rating");
             warningRatingBtns.forEach((b) => b.classList.toggle("selected", b === btn));
-            warningConfirmBtn.disabled = false;
+            if (warningConfirmBtn) warningConfirmBtn.disabled = false;
         });
     });
 
-    warningCancelBtn.addEventListener("click", () => {
-        warningModalOverlay.classList.remove("active");
+    warningCancelBtn?.addEventListener("click", () => {
+        warningModalOverlay?.classList.remove("active");
         document.body.style.overflow = "";
     });
 
-    warningConfirmBtn.addEventListener("click", () => {
+    warningConfirmBtn?.addEventListener("click", () => {
         if (warningSelectedRating) {
             const unratedCards = Array.from(wordCards).filter((card) => {
                 return !card.querySelector(".rating-option.selected");
             });
-            unratedCards.forEach((card) => updateCardRating(card, warningSelectedRating));
-            warningModalOverlay.classList.remove("active");
+            unratedCards.forEach((card) => updateCardRating(card, warningSelectedRating!));
+            warningModalOverlay?.classList.remove("active");
             document.body.style.overflow = "";
             // Auto-submit after marking all
-            submitBtn.click();
+            submitBtn?.click();
         }
     });
 </script>
