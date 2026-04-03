@@ -16,9 +16,12 @@
 - **Start development server:** `npm run dev` (runs at `http://localhost:4321`)
 - **Build for production:** `npm run build`
 - **Astro CLI:** `npm run astro ...`
+- **Format (all files):** `npm run format:all`
+- **Format (specific file):** `npm run format -- path/to/file`
 
 ## Development Conventions
 
+- **Formatting:** After adding or updating a file, ALWAYS use `npm run format -- path/to/file` to ensure consistency with project standards.
 - **Language Mandate:** **ALL code, documentation, and comments MUST be in English.**
 - **Structure:**
     - `src/pages/`: Contains the routes.

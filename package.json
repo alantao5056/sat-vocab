@@ -10,7 +10,8 @@
         "build": "astro build",
         "preview": "astro preview",
         "astro": "astro",
-        "format": "prettier --write ."
+        "format": "prettier --write",
+        "format:all": "prettier --write ."
     },
     "dependencies": {
         "@astrojs/db": "^0.20.1",

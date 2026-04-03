@@ -2,9 +2,9 @@
 import Header from "../components/Header.astro";
 
 interface Props {
-	title: string;
-	showHeader?: boolean;
-	headerSubtitle?: string;
+    title: string;
+    showHeader?: boolean;
+    headerSubtitle?: string;
 }
 
 const { title, showHeader = true, headerSubtitle } = Astro.props;
@@ -12,54 +12,54 @@ const { title, showHeader = true, headerSubtitle } = Astro.props;
 
 <!doctype html>
 <html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="generator" content={Astro.generator} />
-		<title>{title}</title>
-		<style is:global>
-			:root {
-				--primary-blue: #4f46e5;
-				--primary-dark: #4338ca;
-				--bg-light: #f3f4f6;
-				--text-dark: #111827;
-				--text-gray: #4b5563;
-				--text-light-gray: #9ca3af;
-				--card-bg: #ffffff;
-				--border-color: #e5e7eb;
-			}
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" href="/favicon.ico" />
+        <meta name="generator" content={Astro.generator} />
+        <title>{title}</title>
+        <style is:global>
+            :root {
+                --primary-blue: #4f46e5;
+                --primary-dark: #4338ca;
+                --bg-light: #f3f4f6;
+                --text-dark: #111827;
+                --text-gray: #4b5563;
+                --text-light-gray: #9ca3af;
+                --card-bg: #ffffff;
+                --border-color: #e5e7eb;
+            }
 
-			* {
-				margin: 0;
-				padding: 0;
-				box-sizing: border-box;
-				font-family:
-					-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif,
-					"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-			}
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif,
+                    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            }
 
-			html,
-			body {
-				margin: 0;
-				padding: 0;
-				width: 100%;
-				height: 100%;
-			}
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                height: 100%;
+            }
 
-			body {
-				background-color: var(--bg-light);
-				color: var(--text-dark);
-				min-height: 100vh;
-				line-height: 1.5;
-				display: flex;
-				flex-direction: column;
-			}
-		</style>
-	</head>
-	<body>
-		{showHeader && <Header subtitle={headerSubtitle} />}
-		<slot />
-	</body>
+            body {
+                background-color: var(--bg-light);
+                color: var(--text-dark);
+                min-height: 100vh;
+                line-height: 1.5;
+                display: flex;
+                flex-direction: column;
+            }
+        </style>
+    </head>
+    <body>
+        {showHeader && <Header subtitle={headerSubtitle} />}
+        <slot />
+    </body>
 </html>
