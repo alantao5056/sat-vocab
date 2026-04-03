@@ -1,597 +1,555 @@
 ---
 import { db, Word } from "astro:db";
+import Layout from "../layouts/Layout.astro";
+import Logo from "../components/Logo.astro";
 
 const words = await db.select().from(Word).limit(10);
 ---
 
-<html lang="en">
-    <head>
-        <meta charset="utf-8" />
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        <link rel="icon" href="/favicon.ico" />
-        <meta name="viewport" content="width=device-width" />
-        <meta name="generator" content={Astro.generator} />
-        <title>Study - SAT Vocab</title>
-        <style>
-            :root {
-                --primary-blue: #4f46e5;
-                --bg-light: #eaedf6;
-                --text-dark: #111827;
-                --text-gray: #6b7280;
-                --card-bg: #ffffff;
-                --border-color: #f1f5f9;
-            }
+<Layout title="Study - SAT Vocab">
+    <header>
+        <h1>
+            <Logo class="header-logo" size={22} />
+            SAT Vocab
+        </h1>
+        <p class="subtitle">Tap any card to view details</p>
+    </header>
 
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-                font-family:
-                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif,
-                    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-            }
-
-            body {
-                background-color: var(--bg-light);
-                color: var(--text-dark);
-                min-height: 100vh;
-                display: flex;
-                flex-direction: column;
-            }
-
-            header {
-                background: linear-gradient(to bottom, #ffffff, #f9fafb);
-                text-align: center;
-                padding: 1rem 1rem; /* Smaller padding */
-                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-                border-bottom: 2px solid var(--primary-blue);
-                position: relative;
-                z-index: 10;
-            }
-
-            h1 {
-                font-size: 1.25rem;
-                font-weight: 800;
-                color: var(--primary-blue);
-                letter-spacing: -0.025em;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 0.5rem;
-                margin-bottom: 0.1rem;
-            }
-
-            .header-logo {
-                width: 22px;
-                height: 22px;
-                fill: var(--primary-blue);
-            }
-
-            .subtitle {
-                font-size: 0.85rem;
-                font-weight: 500;
-                color: var(--text-gray);
-            }
-
-            main {
-                flex: 1;
-                padding: 1.5rem 1rem;
-                max-width: 500px;
-                margin: 0 auto;
-                width: 100%;
-            }
-
-            .word-grid {
-                display: grid;
-                grid-template-columns: repeat(2, 1fr);
-                gap: 1.25rem;
-            }
-
-            .word-card {
-                background-color: var(--card-bg);
-                border-radius: 16px;
-                display: flex;
-                flex-direction: column;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-                overflow: hidden;
-                /* Removing aspect-ratio to prevent squashing footer */
-                min-height: 160px;
-                cursor: pointer;
-                transition: box-shadow 0.2s ease;
-                -webkit-tap-highlight-color: transparent;
-            }
-
-            .word-card:hover {
-                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            }
-
-            .word-content {
-                flex: 1;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 2rem 1rem;
-                font-size: 1.35rem;
-                font-weight: 600;
-                color: var(--text-dark);
-                text-align: center;
-            }
-
-            .card-footer {
-                border-top: 1.5px solid var(--border-color);
-                display: flex;
-                justify-content: space-around;
-                align-items: center;
-                padding: 0.75rem 0.5rem;
-                background-color: #ffffff;
-                flex-shrink: 0; /* Prevents footer from disappearing */
-            }
-            .rating-option {
-                background: none;
-                border: none;
-                cursor: pointer;
-                padding: 0.5rem;
-                font-size: 1.4rem; /* Slightly smaller emojis */
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: all 0.15s ease;
-                line-height: 1;
-                -webkit-tap-highlight-color: transparent;
-                border-radius: 10px;
-            }
-
-            .rating-option:hover {
-                background-color: var(--bg-light);
-            }
-
-            .rating-option:active {
-                transform: scale(0.9);
-            }
-
-            .rating-option.selected {
-                background-color: var(--bg-light);
-                box-shadow: inset 0 0 0 1.5px var(--primary-blue);
-            }
-
-            .submit-btn {
-                width: 100%;
-                background-color: var(--primary-blue);
-                color: white;
-                border: none;
-                padding: 1.1rem 2rem;
-                border-radius: 12px;
-                font-size: 1.15rem;
-                font-weight: 600;
-                cursor: pointer;
-                box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
-                transition:
-                    transform 0.1s ease,
-                    background-color 0.2s ease;
-            }
-
-            .submit-btn:active {
-                transform: scale(0.99);
-                background-color: #4338ca;
-            }
-
-            .submit-container {
-                margin-top: 1.5rem;
-            }
-
-            /* Modal Styles */
-            .modal-overlay {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0, 0, 0, 0.5);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 1000;
-                opacity: 0;
-                visibility: hidden;
-                transition:
-                    opacity 0.3s ease,
-                    visibility 0.3s ease;
-                backdrop-filter: blur(2px);
-            }
-
-            .modal-overlay.active {
-                opacity: 1;
-                visibility: visible;
-            }
-
-            .modal-content {
-                background-color: #ffffff;
-                width: 90%;
-                max-width: 400px;
-                border-radius: 20px;
-                padding: 2rem;
-                position: relative;
-                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-                transform: scale(0.9);
-                transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-            }
-
-            .modal-overlay.active .modal-content {
-                transform: scale(1);
-            }
-
-            .close-btn {
-                position: absolute;
-                top: 1.25rem;
-                right: 1.25rem;
-                background: none;
-                border: none;
-                cursor: pointer;
-                font-size: 1.5rem;
-                color: var(--text-gray);
-                padding: 0.25rem;
-                line-height: 1;
-            }
-
-            .modal-title {
-                font-size: 1.75rem;
-                font-weight: 700;
-                color: var(--text-dark);
-                text-align: center;
-                margin-bottom: 1rem;
-                padding-bottom: 0.75rem;
-                border-bottom: 1.5px solid var(--border-color);
-            }
-
-            .modal-section {
-                margin-bottom: 1.25rem;
-            }
-
-            .modal-label {
-                font-size: 0.95rem;
-                font-weight: 700;
-                color: var(--text-dark);
-                margin-bottom: 0.5rem;
-                display: block;
-            }
-
-            .modal-text {
-                font-size: 1rem;
-                color: var(--text-dark);
-                line-height: 1.5;
-            }
-
-            .example-text {
-                font-style: italic;
-                color: var(--text-gray);
-            }
-
-            .modal-footer {
-                margin-top: 1.5rem;
-                padding-top: 1rem;
-                border-top: 1.5px solid var(--border-color);
-                text-align: center;
-            }
-
-            .modal-footer-text {
-                font-size: 0.95rem;
-                font-weight: 600;
-                color: var(--text-dark);
-                margin-bottom: 1rem;
-            }
-
-            .modal-rating-container {
-                display: flex;
-                justify-content: center;
-                gap: 1.5rem;
-            }
-
-            .modal-rating-btn {
-                background-color: #ffffff;
-                border: 1.5px solid var(--border-color);
-                border-radius: 12px;
-                padding: 0.75rem 1rem;
-                font-size: 1.5rem;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            }
-
-            .modal-rating-btn:hover {
-                border-color: var(--primary-blue);
-                transform: translateY(-2px);
-            }
-
-            .modal-rating-btn:active {
-                transform: scale(0.95);
-            }
-
-            .rating-option.selected {
-                background-color: var(--bg-light);
-                box-shadow: inset 0 0 0 1.5px var(--primary-blue);
-            }
-
-            .modal-rating-btn.selected {
-                background-color: var(--bg-light);
-                border-color: var(--primary-blue);
-                box-shadow: 0 0 0 1px var(--primary-blue);
-            }
-
-            .word-card.unrated-error {
-                box-shadow: 0 0 0 2px #ef4444;
-            }
-
-            .warning-modal-actions {
-                display: flex;
-                gap: 1rem;
-                margin-top: 1.5rem;
-            }
-
-            .action-btn {
-                flex: 1;
-                padding: 0.75rem;
-                border-radius: 12px;
-                font-size: 1rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.2s ease;
-            }
-
-            .cancel-btn {
-                background-color: #ffffff;
-                border: 1.5px solid var(--border-color);
-                color: var(--text-dark);
-            }
-
-            .confirm-btn {
-                background-color: var(--primary-blue);
-                border: none;
-                color: white;
-            }
-
-            .confirm-btn:disabled {
-                background-color: #d1d5db;
-                cursor: not-allowed;
-            }
-        </style>
-    </head>
-    <body>
-        <header>
-            <h1>
-                <svg class="header-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                    <path
-                        d="M21 4H3c-1.103 0-2 .897-2 2v13c0 1.103.897 2 2 2h18c1.103 0 2-.897 2-2V6c0-1.103-.897-2-2-2zM3 19V6h8v13H3zm18 0h-8V6h8v13z"
-                    ></path>
-                    <path d="M5 8h4v2H5zm0 3h4v2H5zm10-3h4v2h-4zm0 3h4v2h-4z"></path>
-                </svg>
-                SAT Vocab
-            </h1>
-            <p class="subtitle">Tap any card to view details</p>
-        </header>
-
-        <main>
-            <div class="word-grid">
-                {
-                    words.map((word) => (
-                        <div
-                            class="word-card"
-                            data-word={word.word}
-                            data-definition={word.definition}
-                            data-example={word.example}
-                        >
-                            <div class="word-content">{word.word}</div>
-                            <div class="card-footer">
-                                {/* prettier-ignore */}
-                                <button class="rating-option" title="Memorized" data-rating="memorized">✔️</button>
-                                {/* prettier-ignore */}
-                                <button class="rating-option" title="Fuzzy" data-rating="fuzzy">🤨</button>
-                                {/* prettier-ignore */}
-                                <button class="rating-option" title="Unknown" data-rating="unknown">❓</button>
-                            </div>
+    <main>
+        <div class="word-grid">
+            {
+                words.map((word) => (
+                    <div
+                        class="word-card"
+                        data-word={word.word}
+                        data-definition={word.definition}
+                        data-example={word.example}
+                    >
+                        <div class="word-content">{word.word}</div>
+                        <div class="card-footer">
+                            {/* prettier-ignore */}
+                            <button class="rating-option" title="Memorized" data-rating="memorized">✔️</button>
+                            {/* prettier-ignore */}
+                            <button class="rating-option" title="Fuzzy" data-rating="fuzzy">🤨</button>
+                            {/* prettier-ignore */}
+                            <button class="rating-option" title="Unknown" data-rating="unknown">❓</button>
                         </div>
-                    ))
-                }
-            </div>
-
-            <div class="submit-container">
-                <button class="submit-btn" id="submit-btn">Submit Progress</button>
-            </div>
-        </main>
-
-        <!-- Word Detail Modal -->
-        <div class="modal-overlay" id="modal-overlay">
-            <div class="modal-content">
-                <button class="close-btn" id="close-btn" aria-label="Close">&times;</button>
-                <h2 class="modal-title" id="modal-title">Word</h2>
-
-                <div class="modal-section">
-                    <span class="modal-label">Definition:</span>
-                    <p class="modal-text" id="modal-definition"></p>
-                </div>
-
-                <div class="modal-section">
-                    <span class="modal-label">Example:</span>
-                    <p class="modal-text example-text" id="modal-example"></p>
-                </div>
-
-                <div class="modal-footer">
-                    <p class="modal-footer-text">How well do you know this word?</p>
-                    <div class="modal-rating-container">
-                        <button class="modal-rating-btn" title="Memorized" data-rating="memorized">✔️</button>
-                        <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy">🤨</button>
-                        <button class="modal-rating-btn" title="Unknown" data-rating="unknown">❓</button>
                     </div>
+                ))
+            }
+        </div>
+
+        <div class="submit-container">
+            <button class="submit-btn" id="submit-btn">Submit Progress</button>
+        </div>
+    </main>
+
+    <!-- Word Detail Modal -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" id="close-btn" aria-label="Close">&times;</button>
+            <h2 class="modal-title" id="modal-title">Word</h2>
+
+            <div class="modal-section">
+                <span class="modal-label">Definition:</span>
+                <p class="modal-text" id="modal-definition"></p>
+            </div>
+
+            <div class="modal-section">
+                <span class="modal-label">Example:</span>
+                <p class="modal-text example-text" id="modal-example"></p>
+            </div>
+
+            <div class="modal-footer">
+                <p class="modal-footer-text">How well do you know this word?</p>
+                <div class="modal-rating-container">
+                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized">✔️</button>
+                    <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy">🤨</button>
+                    <button class="modal-rating-btn" title="Unknown" data-rating="unknown">❓</button>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Warning Modal -->
-        <div class="modal-overlay" id="warning-modal-overlay">
-            <div class="modal-content">
-                <h2 class="modal-title">Unrated Cards</h2>
+    <!-- Warning Modal -->
+    <div class="modal-overlay" id="warning-modal-overlay">
+        <div class="modal-content">
+            <h2 class="modal-title">Unrated Cards</h2>
 
-                <div class="modal-section">
-                    <p class="modal-text">
-                        You have <strong id="unrated-count">0</strong> cards that are not rated yet. Do you want to mark
-                        them all with the same rating?
-                    </p>
-                </div>
+            <div class="modal-section">
+                <p class="modal-text">
+                    You have <strong id="unrated-count">0</strong> cards that are not rated yet. Do you want to mark
+                    them all with the same rating?
+                </p>
+            </div>
 
-                <div class="modal-section">
-                    <span class="modal-label">Select a rating:</span>
-                    <div class="modal-rating-container" id="warning-rating-container">
-                        <button class="modal-rating-btn" title="Memorized" data-rating="memorized">✔️</button>
-                        <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy">🤨</button>
-                        <button class="modal-rating-btn" title="Unknown" data-rating="unknown">❓</button>
-                    </div>
-                </div>
-
-                <div class="warning-modal-actions">
-                    <button class="action-btn cancel-btn" id="warning-cancel-btn">Cancel</button>
-                    <button class="action-btn confirm-btn" id="warning-confirm-btn" disabled>Yes, Mark All</button>
+            <div class="modal-section">
+                <span class="modal-label">Select a rating:</span>
+                <div class="modal-rating-container" id="warning-rating-container">
+                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized">✔️</button>
+                    <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy">🤨</button>
+                    <button class="modal-rating-btn" title="Unknown" data-rating="unknown">❓</button>
                 </div>
             </div>
+
+            <div class="warning-modal-actions">
+                <button class="action-btn cancel-btn" id="warning-cancel-btn">Cancel</button>
+                <button class="action-btn confirm-btn" id="warning-confirm-btn" disabled>Yes, Mark All</button>
+            </div>
         </div>
+    </div>
+</Layout>
 
-        <script>
-            const modalOverlay = document.getElementById("modal-overlay");
-            const closeBtn = document.getElementById("close-btn");
-            const wordCards = document.querySelectorAll(".word-card");
+<style>
+    header {
+        background: linear-gradient(to bottom, #ffffff, #f9fafb);
+        text-align: center;
+        padding: 1rem 1rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border-bottom: 2px solid var(--primary-blue);
+        position: relative;
+        z-index: 10;
+    }
 
-            const modalTitle = document.getElementById("modal-title");
-            const modalDefinition = document.getElementById("modal-definition");
-            const modalExample = document.getElementById("modal-example");
-            const modalRatingBtns = document.querySelectorAll(".modal-rating-btn");
+    h1 {
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: var(--primary-blue);
+        letter-spacing: -0.025em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 0.1rem;
+    }
 
-            // Warning Modal Elements
-            const warningModalOverlay = document.getElementById("warning-modal-overlay");
-            const unratedCountSpan = document.getElementById("unrated-count");
-            const warningRatingBtns = document.querySelectorAll("#warning-rating-container .modal-rating-btn");
-            const warningCancelBtn = document.getElementById("warning-cancel-btn");
-            const warningConfirmBtn = document.getElementById("warning-confirm-btn");
-            const submitBtn = document.getElementById("submit-btn");
+    :global(.header-logo) {
+        color: var(--primary-blue);
+    }
 
-            let activeCard = null;
-            let warningSelectedRating = null;
+    .subtitle {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--text-gray);
+    }
 
-            function updateCardRating(card, rating) {
-                const options = card.querySelectorAll(".rating-option");
-                options.forEach((opt) => {
-                    if (opt.getAttribute("data-rating") === rating) {
-                        opt.classList.add("selected");
-                    } else {
-                        opt.classList.remove("selected");
-                    }
-                });
-                card.classList.remove("unrated-error");
+    main {
+        flex: 1;
+        padding: 1.5rem 1rem;
+        max-width: 500px;
+        margin: 0 auto;
+        width: 100%;
+    }
+
+    .word-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.25rem;
+    }
+
+    .word-card {
+        background-color: var(--card-bg);
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+        min-height: 160px;
+        cursor: pointer;
+        transition: box-shadow 0.2s ease;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .word-card:hover {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+
+    .word-content {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        font-size: 1.35rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        text-align: center;
+    }
+
+    .card-footer {
+        border-top: 1.5px solid var(--border-color);
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        padding: 0.75rem 0.5rem;
+        background-color: #ffffff;
+        flex-shrink: 0;
+    }
+    .rating-option {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.5rem;
+        font-size: 1.4rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+        line-height: 1;
+        -webkit-tap-highlight-color: transparent;
+        border-radius: 10px;
+    }
+
+    .rating-option:hover {
+        background-color: var(--bg-light);
+    }
+
+    .rating-option:active {
+        transform: scale(0.9);
+    }
+
+    .rating-option.selected {
+        background-color: var(--bg-light);
+        box-shadow: inset 0 0 0 1.5px var(--primary-blue);
+    }
+
+    .submit-btn {
+        width: 100%;
+        background-color: var(--primary-blue);
+        color: white;
+        border: none;
+        padding: 1.1rem 2rem;
+        border-radius: 12px;
+        font-size: 1.15rem;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+        transition:
+            transform 0.1s ease,
+            background-color 0.2s ease;
+    }
+
+    .submit-btn:active {
+        transform: scale(0.99);
+        background-color: var(--primary-dark);
+    }
+
+    .submit-container {
+        margin-top: 1.5rem;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        opacity: 0;
+        visibility: hidden;
+        transition:
+            opacity 0.3s ease,
+            visibility 0.3s ease;
+        backdrop-filter: blur(2px);
+    }
+
+    .modal-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .modal-content {
+        background-color: #ffffff;
+        width: 90%;
+        max-width: 400px;
+        border-radius: 20px;
+        padding: 2rem;
+        position: relative;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        transform: scale(0.9);
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .modal-overlay.active .modal-content {
+        transform: scale(1);
+    }
+
+    .close-btn {
+        position: absolute;
+        top: 1.25rem;
+        right: 1.25rem;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.5rem;
+        color: var(--text-gray);
+        padding: 0.25rem;
+        line-height: 1;
+    }
+
+    .modal-title {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        text-align: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1.5px solid var(--border-color);
+    }
+
+    .modal-section {
+        margin-bottom: 1.25rem;
+    }
+
+    .modal-label {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+
+    .modal-text {
+        font-size: 1rem;
+        color: var(--text-dark);
+        line-height: 1.5;
+    }
+
+    .example-text {
+        font-style: italic;
+        color: var(--text-gray);
+    }
+
+    .modal-footer {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1.5px solid var(--border-color);
+        text-align: center;
+    }
+
+    .modal-footer-text {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        margin-bottom: 1rem;
+    }
+
+    .modal-rating-container {
+        display: flex;
+        justify-content: center;
+        gap: 1.5rem;
+    }
+
+    .modal-rating-btn {
+        background-color: #ffffff;
+        border: 1.5px solid var(--border-color);
+        border-radius: 12px;
+        padding: 0.75rem 1rem;
+        font-size: 1.5rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .modal-rating-btn:hover {
+        border-color: var(--primary-blue);
+        transform: translateY(-2px);
+    }
+
+    .modal-rating-btn:active {
+        transform: scale(0.95);
+    }
+
+    .rating-option.selected {
+        background-color: var(--bg-light);
+        box-shadow: inset 0 0 0 1.5px var(--primary-blue);
+    }
+
+    .modal-rating-btn.selected {
+        background-color: var(--bg-light);
+        border-color: var(--primary-blue);
+        box-shadow: 0 0 0 1px var(--primary-blue);
+    }
+
+    .word-card.unrated-error {
+        box-shadow: 0 0 0 2px #ef4444;
+    }
+
+    .warning-modal-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+
+    .action-btn {
+        flex: 1;
+        padding: 0.75rem;
+        border-radius: 12px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .cancel-btn {
+        background-color: #ffffff;
+        border: 1.5px solid var(--border-color);
+        color: var(--text-dark);
+    }
+
+    .confirm-btn {
+        background-color: var(--primary-blue);
+        border: none;
+        color: white;
+    }
+
+    .confirm-btn:disabled {
+        background-color: #d1d5db;
+        cursor: not-allowed;
+    }
+</style>
+
+<script>
+    const modalOverlay = document.getElementById("modal-overlay");
+    const closeBtn = document.getElementById("close-btn");
+    const wordCards = document.querySelectorAll(".word-card");
+
+    const modalTitle = document.getElementById("modal-title");
+    const modalDefinition = document.getElementById("modal-definition");
+    const modalExample = document.getElementById("modal-example");
+    const modalRatingBtns = document.querySelectorAll(".modal-rating-btn");
+
+    // Warning Modal Elements
+    const warningModalOverlay = document.getElementById("warning-modal-overlay");
+    const unratedCountSpan = document.getElementById("unrated-count");
+    const warningRatingBtns = document.querySelectorAll("#warning-rating-container .modal-rating-btn");
+    const warningCancelBtn = document.getElementById("warning-cancel-btn");
+    const warningConfirmBtn = document.getElementById("warning-confirm-btn");
+    const submitBtn = document.getElementById("submit-btn");
+
+    let activeCard = null;
+    let warningSelectedRating = null;
+
+    function updateCardRating(card, rating) {
+        const options = card.querySelectorAll(".rating-option");
+        options.forEach((opt) => {
+            if (opt.getAttribute("data-rating") === rating) {
+                opt.classList.add("selected");
+            } else {
+                opt.classList.remove("selected");
             }
+        });
+        card.classList.remove("unrated-error");
+    }
 
-            function openModal(card) {
-                activeCard = card;
-                const word = card.getAttribute("data-word");
-                const definition = card.getAttribute("data-definition");
-                const example = card.getAttribute("data-example");
+    function openModal(card) {
+        activeCard = card;
+        const word = card.getAttribute("data-word");
+        const definition = card.getAttribute("data-definition");
+        const example = card.getAttribute("data-example");
 
-                modalTitle.textContent = word;
-                modalDefinition.textContent = definition;
-                modalExample.textContent = example;
+        modalTitle.textContent = word;
+        modalDefinition.textContent = definition;
+        modalExample.textContent = example;
 
-                // Sync modal rating buttons with card selection
-                const selectedCardRating = card.querySelector(".rating-option.selected")?.getAttribute("data-rating");
-                modalRatingBtns.forEach((btn) => {
-                    if (btn.getAttribute("data-rating") === selectedCardRating) {
-                        btn.classList.add("selected");
-                    } else {
-                        btn.classList.remove("selected");
-                    }
-                });
-
-                modalOverlay.classList.add("active");
-                document.body.style.overflow = "hidden";
+        // Sync modal rating buttons with card selection
+        const selectedCardRating = card.querySelector(".rating-option.selected")?.getAttribute("data-rating");
+        modalRatingBtns.forEach((btn) => {
+            if (btn.getAttribute("data-rating") === selectedCardRating) {
+                btn.classList.add("selected");
+            } else {
+                btn.classList.remove("selected");
             }
+        });
 
-            function closeModal() {
-                modalOverlay.classList.remove("active");
-                document.body.style.overflow = "";
-                activeCard = null;
+        modalOverlay.classList.add("active");
+        document.body.style.overflow = "hidden";
+    }
+
+    function closeModal() {
+        modalOverlay.classList.remove("active");
+        document.body.style.overflow = "";
+        activeCard = null;
+    }
+
+    wordCards.forEach((card) => {
+        card.addEventListener("click", (e) => {
+            const ratingBtn = e.target.closest(".rating-option");
+            if (ratingBtn) {
+                const rating = ratingBtn.getAttribute("data-rating");
+                updateCardRating(card, rating);
+                return;
             }
+            openModal(card);
+        });
+    });
 
-            wordCards.forEach((card) => {
-                card.addEventListener("click", (e) => {
-                    const ratingBtn = e.target.closest(".rating-option");
-                    if (ratingBtn) {
-                        const rating = ratingBtn.getAttribute("data-rating");
-                        updateCardRating(card, rating);
-                        return;
-                    }
-                    openModal(card);
-                });
+    closeBtn.addEventListener("click", closeModal);
+
+    modalOverlay.addEventListener("click", (e) => {
+        if (e.target === modalOverlay) {
+            closeModal();
+        }
+    });
+
+    modalRatingBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const rating = btn.getAttribute("data-rating");
+            if (activeCard) {
+                updateCardRating(activeCard, rating);
+            }
+            closeModal();
+        });
+    });
+
+    // Validation and Warning Modal Logic
+    submitBtn.addEventListener("click", () => {
+        const unratedCards = Array.from(wordCards).filter((card) => {
+            return !card.querySelector(".rating-option.selected");
+        });
+
+        if (unratedCards.length > 0) {
+            unratedCards.forEach((card) => card.classList.add("unrated-error"));
+            unratedCountSpan.textContent = unratedCards.length;
+            warningModalOverlay.classList.add("active");
+            document.body.style.overflow = "hidden";
+            // Reset warning modal state
+            warningSelectedRating = null;
+            warningRatingBtns.forEach((btn) => btn.classList.remove("selected"));
+            warningConfirmBtn.disabled = true;
+        } else {
+            alert("Progress submitted successfully!");
+        }
+    });
+
+    warningRatingBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+            warningSelectedRating = btn.getAttribute("data-rating");
+            warningRatingBtns.forEach((b) => b.classList.toggle("selected", b === btn));
+            warningConfirmBtn.disabled = false;
+        });
+    });
+
+    warningCancelBtn.addEventListener("click", () => {
+        warningModalOverlay.classList.remove("active");
+        document.body.style.overflow = "";
+    });
+
+    warningConfirmBtn.addEventListener("click", () => {
+        if (warningSelectedRating) {
+            const unratedCards = Array.from(wordCards).filter((card) => {
+                return !card.querySelector(".rating-option.selected");
             });
-
-            closeBtn.addEventListener("click", closeModal);
-
-            modalOverlay.addEventListener("click", (e) => {
-                if (e.target === modalOverlay) {
-                    closeModal();
-                }
-            });
-
-            modalRatingBtns.forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    const rating = btn.getAttribute("data-rating");
-                    if (activeCard) {
-                        updateCardRating(activeCard, rating);
-                    }
-                    closeModal();
-                });
-            });
-
-            // Validation and Warning Modal Logic
-            submitBtn.addEventListener("click", () => {
-                const unratedCards = Array.from(wordCards).filter((card) => {
-                    return !card.querySelector(".rating-option.selected");
-                });
-
-                if (unratedCards.length > 0) {
-                    unratedCards.forEach((card) => card.classList.add("unrated-error"));
-                    unratedCountSpan.textContent = unratedCards.length;
-                    warningModalOverlay.classList.add("active");
-                    document.body.style.overflow = "hidden";
-                    // Reset warning modal state
-                    warningSelectedRating = null;
-                    warningRatingBtns.forEach((btn) => btn.classList.remove("selected"));
-                    warningConfirmBtn.disabled = true;
-                } else {
-                    alert("Progress submitted successfully!");
-                    // Here you would typically send the data to the server
-                }
-            });
-
-            warningRatingBtns.forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    warningSelectedRating = btn.getAttribute("data-rating");
-                    warningRatingBtns.forEach((b) => b.classList.toggle("selected", b === btn));
-                    warningConfirmBtn.disabled = false;
-                });
-            });
-
-            warningCancelBtn.addEventListener("click", () => {
-                warningModalOverlay.classList.remove("active");
-                document.body.style.overflow = "";
-            });
-
-            warningConfirmBtn.addEventListener("click", () => {
-                if (warningSelectedRating) {
-                    const unratedCards = Array.from(wordCards).filter((card) => {
-                        return !card.querySelector(".rating-option.selected");
-                    });
-                    unratedCards.forEach((card) => updateCardRating(card, warningSelectedRating));
-                    warningModalOverlay.classList.remove("active");
-                    document.body.style.overflow = "";
-                    // Auto-submit after marking all
-                    submitBtn.click();
-                }
-            });
-        </script>
-    </body>
-</html>
+            unratedCards.forEach((card) => updateCardRating(card, warningSelectedRating));
+            warningModalOverlay.classList.remove("active");
+            document.body.style.overflow = "";
+            // Auto-submit after marking all
+            submitBtn.click();
+        }
+    });
+</script>
