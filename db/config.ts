@@ -1,0 +1,21 @@
+import { defineDb, defineTable, column } from 'astro:db';
+
+const Word = defineTable({
+  columns: {
+    id: column.number({ primaryKey: true }),
+    word: column.text(),
+    definition: column.text(),
+    example: column.text(),
+    total_views: column.number({ default: 0 }),
+    memorized_count: column.number({ default: 0 }),
+    fuzzy_count: column.number({ default: 0 }),
+    unknown_count: column.number({ default: 0 }),
+  }
+});
+
+// https://astro.build/db/config
+export default defineDb({
+  tables: {
+    Word,
+  }
+});

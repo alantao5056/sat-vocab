@@ -1,16 +1,7 @@
 ---
-const words = [
-    "Aberrant",
-    "Benevolent",
-    "Capricious",
-    "Diligent",
-    "Ephemeral",
-    "Frugal",
-    "Gregarious",
-    "Haughty",
-    "Innocuous",
-    "Jovial",
-];
+import { db, Word } from 'astro:db';
+
+const words = await db.select().from(Word).limit(10);
 ---
 
 <html lang="en">
@@ -194,7 +185,7 @@ const words = [
                 {
                     words.map((word) => (
                         <div class="word-card">
-                            <div class="word-content">{word}</div>
+                            <div class="word-content">{word.word}</div>
                             <div class="card-footer">
                                 {/* prettier-ignore */}
                                 <button class="rating-option" title="Memorized">✔️</button>
