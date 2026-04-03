@@ -1,8 +1,8 @@
 {
-  "mcpServers": {
-    "figma": {
-      "url": "https://mcp.figma.com/mcp",
-      "type": "http"
+    "mcpServers": {
+        "figma": {
+            "url": "https://mcp.figma.com/mcp",
+            "type": "http"
+        }
     }
-  }
 }
