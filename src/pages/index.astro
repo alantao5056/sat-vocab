@@ -3,15 +3,141 @@
 ---
 
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
+    <head>
+        <meta charset="utf-8" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" href="/favicon.ico" />
+        <meta name="viewport" content="width=device-width" />
+        <meta name="generator" content={Astro.generator} />
+        <title>SAT Vocab - Master Your Vocabulary</title>
+        <style>
+            :root {
+                --primary-blue: #3b59ff;
+                --bg-light: #f5f8ff;
+                --text-dark: #1a1a2e;
+                --text-gray: #555;
+                --text-light-gray: #888;
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+                    sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            }
+
+            body {
+                background: linear-gradient(135deg, #ffffff 0%, var(--bg-light) 100%);
+                height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                color: var(--text-dark);
+            }
+
+            main {
+                width: 100%;
+                max-width: 400px;
+                padding: 2rem;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }
+
+            .icon-container {
+                width: 140px;
+                height: 140px;
+                background-color: var(--primary-blue);
+                border-radius: 50%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin-bottom: 2.5rem;
+                box-shadow: 0 10px 20px rgba(59, 89, 255, 0.2);
+            }
+
+            .icon-container svg {
+                width: 70px;
+                height: 70px;
+                fill: white;
+            }
+
+            h1 {
+                font-size: 2.8rem;
+                font-weight: 800;
+                margin-bottom: 1rem;
+                letter-spacing: -0.5px;
+            }
+
+            .subtitle {
+                font-size: 1.15rem;
+                line-height: 1.5;
+                color: var(--text-gray);
+                margin-bottom: 3.5rem;
+                max-width: 300px;
+            }
+
+            .start-btn {
+                display: inline-block;
+                width: 100%;
+                background-color: var(--primary-blue);
+                color: white;
+                text-decoration: none;
+                padding: 1.1rem 2rem;
+                border-radius: 12px;
+                font-size: 1.25rem;
+                font-weight: 600;
+                margin-bottom: 1.5rem;
+                transition:
+                    transform 0.2s ease,
+                    background-color 0.2s ease;
+                box-shadow: 0 4px 15px rgba(59, 89, 255, 0.3);
+            }
+
+            .start-btn:active {
+                transform: scale(0.98);
+                background-color: #3047d1;
+            }
+
+            .helper-text {
+                font-size: 0.95rem;
+                color: var(--text-light-gray);
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+            }
+
+            .helper-text::before {
+                content: "";
+                display: block;
+                width: 4px;
+                height: 4px;
+                background-color: var(--text-light-gray);
+                border-radius: 50%;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <div class="icon-container">
+                <!-- Open Book Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path d="M12 21c-1.104 0-2 .896-2 2h4c0-1.104-.896-2-2-2z"></path>
+                    <path
+                        d="M21 4H3c-1.103 0-2 .897-2 2v13c0 1.103.897 2 2 2h18c1.103 0 2-.897 2-2V6c0-1.103-.897-2-2-2zM3 19V6h8v13H3zm18 0h-8V6h8v13z"
+                    ></path>
+                    <path d="M5 8h4v2H5zm0 3h4v2H5zm10-3h4v2h-4zm0 3h4v2h-4z"></path>
+                </svg>
+            </div>
+            <h1>SAT Vocab</h1>
+            <p class="subtitle">Master your SAT vocabulary with interactive flashcards</p>
+
+            <a href="/words" class="start-btn">Start Learning</a>
+
+            <p class="helper-text">10 words • Tap cards to reveal definitions</p>
+        </main>
+    </body>
 </html>
