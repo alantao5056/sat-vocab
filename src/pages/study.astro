@@ -96,6 +96,13 @@ const words = await db.select().from(Word).limit(10);
                 overflow: hidden;
                 /* Removing aspect-ratio to prevent squashing footer */
                 min-height: 160px;
+                cursor: pointer;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+
+            .word-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
             }
 
             .word-content {
@@ -107,6 +114,7 @@ const words = await db.select().from(Word).limit(10);
                 font-size: 1.35rem;
                 font-weight: 600;
                 color: var(--text-dark);
+                text-align: center;
             }
 
             .card-footer {
@@ -166,6 +174,131 @@ const words = await db.select().from(Word).limit(10);
                 transform: scale(0.99);
                 background-color: #4338ca;
             }
+
+            /* Modal Styles */
+            .modal-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 1000;
+                opacity: 0;
+                visibility: hidden;
+                transition: opacity 0.3s ease, visibility 0.3s ease;
+                backdrop-filter: blur(2px);
+            }
+
+            .modal-overlay.active {
+                opacity: 1;
+                visibility: visible;
+            }
+
+            .modal-content {
+                background-color: #ffffff;
+                width: 90%;
+                max-width: 400px;
+                border-radius: 20px;
+                padding: 2rem;
+                position: relative;
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+                transform: scale(0.9);
+                transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            }
+
+            .modal-overlay.active .modal-content {
+                transform: scale(1);
+            }
+
+            .close-btn {
+                position: absolute;
+                top: 1.25rem;
+                right: 1.25rem;
+                background: none;
+                border: none;
+                cursor: pointer;
+                font-size: 1.5rem;
+                color: var(--text-gray);
+                padding: 0.25rem;
+                line-height: 1;
+            }
+
+            .modal-title {
+                font-size: 1.75rem;
+                font-weight: 700;
+                color: var(--text-dark);
+                text-align: center;
+                margin-bottom: 1rem;
+                padding-bottom: 0.75rem;
+                border-bottom: 1.5px solid var(--border-color);
+            }
+
+            .modal-section {
+                margin-bottom: 1.25rem;
+            }
+
+            .modal-label {
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: var(--text-dark);
+                margin-bottom: 0.5rem;
+                display: block;
+            }
+
+            .modal-text {
+                font-size: 1rem;
+                color: var(--text-dark);
+                line-height: 1.5;
+            }
+
+            .example-text {
+                font-style: italic;
+                color: var(--text-gray);
+            }
+
+            .modal-footer {
+                margin-top: 1.5rem;
+                padding-top: 1rem;
+                border-top: 1.5px solid var(--border-color);
+                text-align: center;
+            }
+
+            .modal-footer-text {
+                font-size: 0.95rem;
+                font-weight: 600;
+                color: var(--text-dark);
+                margin-bottom: 1rem;
+            }
+
+            .modal-rating-container {
+                display: flex;
+                justify-content: center;
+                gap: 1.5rem;
+            }
+
+            .modal-rating-btn {
+                background-color: #ffffff;
+                border: 1.5px solid var(--border-color);
+                border-radius: 12px;
+                padding: 0.75rem 1rem;
+                font-size: 1.5rem;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            }
+
+            .modal-rating-btn:hover {
+                border-color: var(--primary-blue);
+                transform: translateY(-2px);
+            }
+
+            .modal-rating-btn:active {
+                transform: scale(0.95);
+            }
         </style>
     </head>
     <body>
@@ -184,7 +317,12 @@ const words = await db.select().from(Word).limit(10);
             <div class="word-grid">
                 {
                     words.map((word) => (
-                        <div class="word-card">
+                        <div 
+                            class="word-card" 
+                            data-word={word.word} 
+                            data-definition={word.definition} 
+                            data-example={word.example}
+                        >
                             <div class="word-content">{word.word}</div>
                             <div class="card-footer">
                                 {/* prettier-ignore */}
@@ -203,5 +341,85 @@ const words = await db.select().from(Word).limit(10);
                 <button class="submit-btn">Submit Progress</button>
             </div>
         </main>
+
+        <!-- Modal -->
+        <div class="modal-overlay" id="modal-overlay">
+            <div class="modal-content">
+                <button class="close-btn" id="close-btn" aria-label="Close">&times;</button>
+                <h2 class="modal-title" id="modal-title">Word</h2>
+                
+                <div class="modal-section">
+                    <span class="modal-label">Definition:</span>
+                    <p class="modal-text" id="modal-definition">Sparing or economical with regard to money or food; avoiding waste.</p>
+                </div>
+
+                <div class="modal-section">
+                    <span class="modal-label">Example:</span>
+                    <p class="modal-text example-text" id="modal-example">His frugal lifestyle allowed him to save enough money to retire early.</p>
+                </div>
+
+                <div class="modal-footer">
+                    <p class="modal-footer-text">How well do you know this word?</p>
+                    <div class="modal-rating-container">
+                        <button class="modal-rating-btn" title="Memorized">✔️</button>
+                        <button class="modal-rating-btn" title="Fuzzy">🤨</button>
+                        <button class="modal-rating-btn" title="Unknown">❓</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            const modalOverlay = document.getElementById('modal-overlay');
+            const closeBtn = document.getElementById('close-btn');
+            const wordCards = document.querySelectorAll('.word-card');
+            
+            const modalTitle = document.getElementById('modal-title');
+            const modalDefinition = document.getElementById('modal-definition');
+            const modalExample = document.getElementById('modal-example');
+
+            function openModal(card) {
+                const word = card.getAttribute('data-word');
+                const definition = card.getAttribute('data-definition');
+                const example = card.getAttribute('data-example');
+
+                modalTitle.textContent = word;
+                modalDefinition.textContent = definition;
+                modalExample.textContent = example;
+
+                modalOverlay.classList.add('active');
+                document.body.style.overflow = 'hidden'; // Prevent scrolling
+            }
+
+            function closeModal() {
+                modalOverlay.classList.remove('active');
+                document.body.style.overflow = ''; // Restore scrolling
+            }
+
+            wordCards.forEach(card => {
+                card.addEventListener('click', (e) => {
+                    // Don't open modal if a rating button was clicked
+                    if (e.target.closest('.rating-option')) return;
+                    openModal(card);
+                });
+            });
+
+            closeBtn.addEventListener('click', closeModal);
+
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target === modalOverlay) {
+                    closeModal();
+                }
+            });
+
+            // Handle rating buttons in modal (for now just close modal)
+            const modalRatingBtns = document.querySelectorAll('.modal-rating-btn');
+            modalRatingBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // TODO: Implement actual rating logic
+                    closeModal();
+                });
+            });
+        </script>
     </body>
 </html>
