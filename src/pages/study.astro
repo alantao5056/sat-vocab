@@ -1,20 +1,11 @@
 ---
 import { db, Word } from "astro:db";
 import Layout from "../layouts/Layout.astro";
-import Logo from "../components/Logo.astro";
 
 const words = await db.select().from(Word).limit(10);
 ---
 
-<Layout title="Study - SAT Vocab">
-    <header>
-        <h1>
-            <Logo class="header-logo" size={22} />
-            SAT Vocab
-        </h1>
-        <p class="subtitle">Tap any card to view details</p>
-    </header>
-
+<Layout title="Study - SAT Vocab" headerSubtitle="Tap any card to view details">
     <main>
         <div class="word-grid">
             {
@@ -101,38 +92,6 @@ const words = await db.select().from(Word).limit(10);
 </Layout>
 
 <style>
-    header {
-        background: linear-gradient(to bottom, #ffffff, #f9fafb);
-        text-align: center;
-        padding: 1rem 1rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        border-bottom: 2px solid var(--primary-blue);
-        position: relative;
-        z-index: 10;
-    }
-
-    h1 {
-        font-size: 1.25rem;
-        font-weight: 800;
-        color: var(--primary-blue);
-        letter-spacing: -0.025em;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-        margin-bottom: 0.1rem;
-    }
-
-    :global(.header-logo) {
-        color: var(--primary-blue);
-    }
-
-    .subtitle {
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: var(--text-gray);
-    }
-
     main {
         flex: 1;
         padding: 1.5rem 1rem;

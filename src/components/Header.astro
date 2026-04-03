@@ -1,0 +1,51 @@
+---
+import Logo from "./Logo.astro";
+
+interface Props {
+	subtitle?: string;
+}
+
+const { subtitle } = Astro.props;
+---
+
+<header>
+	<h1>
+		<Logo class="header-logo" size={22} />
+		SAT Vocab
+	</h1>
+	{subtitle && <p class="subtitle">{subtitle}</p>}
+</header>
+
+<style>
+	header {
+		background: linear-gradient(to bottom, #ffffff, #f9fafb);
+		text-align: center;
+		padding: 1rem 1rem;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+		border-bottom: 2px solid var(--primary-blue);
+		position: relative;
+		z-index: 10;
+	}
+
+	h1 {
+		font-size: 1.25rem;
+		font-weight: 800;
+		color: var(--primary-blue);
+		letter-spacing: -0.025em;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		margin-bottom: 0.1rem;
+	}
+
+	:global(.header-logo) {
+		color: var(--primary-blue);
+	}
+
+	.subtitle {
+		font-size: 0.85rem;
+		font-weight: 500;
+		color: var(--text-gray);
+	}
+</style>
