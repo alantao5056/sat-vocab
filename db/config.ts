@@ -6,6 +6,7 @@ const Word = defineTable({
         word: column.text(),
         definition: column.text(),
         example: column.text(),
+        flagged: column.boolean({ default: false }),
         total_views: column.number({ default: 0 }),
         memorized_count: column.number({ default: 0 }),
         fuzzy_count: column.number({ default: 0 }),

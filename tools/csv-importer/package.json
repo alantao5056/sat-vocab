@@ -1,0 +1,13 @@
+{
+    "name": "csv-importer",
+    "version": "1.0.0",
+    "description": "Standalone script to import CSV words into seed data",
+    "type": "module",
+    "scripts": {
+        "start": "node index.js ../../tmp/words.csv ../../tmp/words.db"
+    },
+    "dependencies": {
+        "@libsql/client": "^0.14.0",
+        "csv-parser": "^3.0.0"
+    }
+}
