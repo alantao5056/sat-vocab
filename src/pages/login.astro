@@ -1,0 +1,197 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Logo from "../components/Logo.astro";
+
+let error = false;
+
+if (Astro.request.method === "POST") {
+    try {
+        const data = await Astro.request.formData();
+        const passcode = data.get("passcode");
+        const expectedPasscode = import.meta.env.PASSCODE;
+        const sessionSecret = import.meta.env.SESSION_SECRET;
+
+        if (!expectedPasscode || !sessionSecret) {
+            console.error("Missing PASSCODE or SESSION_SECRET environment variables.");
+            error = true;
+        } else if (passcode === expectedPasscode) {
+            Astro.cookies.set("auth_token", sessionSecret, {
+                path: "/",
+                httpOnly: true,
+                secure: import.meta.env.PROD,
+                sameSite: "lax",
+                maxAge: 60 * 60 * 24 * 30, // 30 days
+            });
+            return Astro.redirect("/");
+        } else {
+            error = true;
+        }
+    } catch (e) {
+        error = true;
+    }
+}
+---
+
+<Layout title="Login - SAT Vocab" showHeader={false}>
+    <main>
+        <div class="icon-container">
+            <Logo size={70} class="main-logo" />
+        </div>
+        <h1>SAT Vocab</h1>
+        <p class="subtitle">
+            Master your SAT vocabulary with interactive flashcards<br />
+            <span class="login-prompt">Enter passcode to login</span>
+        </p>
+
+        <form method="POST">
+            <div class="input-group">
+                <input
+                    type="password"
+                    name="passcode"
+                    pattern="[0-9]{4}"
+                    maxlength="4"
+                    inputmode="numeric"
+                    required
+                    autofocus
+                    placeholder="••••"
+                    title="Please enter exactly 4 digits"
+                    autocomplete="off"
+                />
+            </div>
+            {error && <p class="error-msg">Incorrect passcode. Please try again.</p>}
+            <button type="submit" class="submit-btn">Enter</button>
+        </form>
+
+        <p class="helper-text">Enter your 4-digit passcode to login</p>
+    </main>
+</Layout>
+
+<style>
+    main {
+        flex: 1;
+        width: 100%;
+        max-width: 400px;
+        margin: 0 auto;
+        padding: 2rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+    }
+
+    .icon-container {
+        width: 140px;
+        height: 140px;
+        background-color: var(--primary-blue);
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 2.5rem;
+        box-shadow: 0 10px 20px rgba(79, 70, 229, 0.2);
+    }
+
+    :global(.main-logo) {
+        color: var(--bg-light);
+    }
+
+    h1 {
+        font-size: 2.8rem;
+        font-weight: 800;
+        margin-bottom: 1rem;
+        letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+        font-size: 1.15rem;
+        line-height: 1.5;
+        color: var(--text-gray);
+        margin-bottom: 3rem;
+        max-width: 300px;
+    }
+
+    .login-prompt {
+        display: block;
+        margin-top: 0.5rem;
+        font-weight: 600;
+        color: var(--primary-blue);
+    }
+
+    form {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .input-group {
+        display: flex;
+        justify-content: center;
+    }
+
+    input {
+        font-size: 2.5rem;
+        letter-spacing: 0.5em;
+        text-align: center;
+        width: 100%;
+        max-width: 250px;
+        padding: 1rem;
+        border: 2px solid var(--border-color);
+        border-radius: 12px;
+        background-color: var(--card-bg);
+        color: var(--text-dark);
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    input:focus {
+        border-color: var(--primary-blue);
+    }
+
+    .error-msg {
+        color: #ef4444;
+        font-size: 0.95rem;
+        margin-top: -0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .submit-btn {
+        width: 100%;
+        background-color: var(--primary-blue);
+        color: white;
+        border: none;
+        padding: 1.1rem;
+        border-radius: 12px;
+        font-size: 1.25rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+            transform 0.2s ease,
+            background-color 0.2s ease;
+        box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+    }
+
+    .submit-btn:active {
+        transform: scale(0.98);
+        background-color: var(--primary-dark);
+    }
+
+    .helper-text {
+        font-size: 0.95rem;
+        color: var(--text-light-gray);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .helper-text::before {
+        content: "";
+        display: block;
+        width: 4px;
+        height: 4px;
+        background-color: var(--text-light-gray);
+        border-radius: 50%;
+    }
+</style>
