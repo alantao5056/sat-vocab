@@ -50,18 +50,22 @@ All commands are run from the root of the project:
 To deploy this application to a VPS and ensure your vocabulary progress is not lost during redeployments, follow these steps:
 
 ### 1. Configure Persistent Database
+
 By default, Astro DB uses a local file that is recreated on every build. To persist data across deployments:
+
 1. Create a directory for your database outside of the project folder (e.g., `/var/lib/sat-vocab/`).
 2. Set the `ASTRO_DB_REMOTE_URL` environment variable to point to this location:
-   ```env
-   ASTRO_DB_REMOTE_URL="file:///var/lib/sat-vocab/data.db"
-   ```
+    ```env
+    ASTRO_DB_REMOTE_URL="file:///var/lib/sat-vocab/data.db"
+    ```
 
 ### 2. Deployment Steps
+
 1. **Build the project**: `npm run build`
 2. **Start the server**: `npm run start` (uses the Node.js standalone adapter)
 
 ### 3. Environment Variables
+
 - `PORT`: (Optional) The port the server will listen on (defaults to 4321).
 - `HOST`: (Optional) The host the server will bind to (defaults to `0.0.0.0`).
 - `ASTRO_DB_REMOTE_URL`: **Required** for data persistence on a VPS.

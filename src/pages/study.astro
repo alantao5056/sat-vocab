@@ -15,7 +15,7 @@ if (Astro.request.method === "POST") {
         if (ratingsJson) {
             const ratings = JSON.parse(ratingsJson);
             const submittedIds = ratings.map((r: any) => r.id);
-            
+
             // Fetch all words being updated at once
             const wordsToUpdate = await db.select().from(Word).where(inArray(Word.id, submittedIds));
             const wordsMap = new Map(wordsToUpdate.map((w) => [w.id, w]));
@@ -33,7 +33,7 @@ if (Astro.request.method === "POST") {
                     else if (rating === "fuzzy") newFuzzy++;
                     else if (rating === "unknown") newUnknown++;
 
-                    const newWeight = Math.max(1, 10 + (newUnknown * 50) + (newFuzzy * 20) - (newMemorized * 30));
+                    const newWeight = Math.max(1, 10 + newUnknown * 50 + newFuzzy * 20 - newMemorized * 30);
 
                     const updateSet: Record<string, any> = {
                         total_views: currentWord.total_views + 1,
@@ -54,10 +54,12 @@ if (Astro.request.method === "POST") {
 }
 
 // Fetch ONLY ids and weights for all words to perform efficient weighted random selection
-const allWordsWeights = await db.select({
-    id: Word.id,
-    selection_weight: Word.selection_weight,
-}).from(Word);
+const allWordsWeights = await db
+    .select({
+        id: Word.id,
+        selection_weight: Word.selection_weight,
+    })
+    .from(Word);
 
 // Weighted random selection with binary search and rejection sampling
 const selectedIds = new Set<number>();
@@ -89,15 +91,19 @@ if (allWordsWeights.length > 0) {
                 high = mid;
             }
         }
-        
+
         selectedIds.add(allWordsWeights[low].id);
     }
 }
 
 // Fetch the full data for the 10 selected words
-const words = selectedIds.size > 0 
-    ? await db.select().from(Word).where(inArray(Word.id, Array.from(selectedIds))) 
-    : [];
+const words =
+    selectedIds.size > 0
+        ? await db
+              .select()
+              .from(Word)
+              .where(inArray(Word.id, Array.from(selectedIds)))
+        : [];
 
 // Shuffle the fetched words so they aren't always in database ID order
 words.sort(() => Math.random() - 0.5);
@@ -167,7 +173,8 @@ words.sort(() => Math.random() - 0.5);
             <div class="modal-footer">
                 <p class="modal-footer-text">How well do you know this word?</p>
                 <div class="modal-rating-container">
-                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized"><IconMemorized /></button>
+                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized"><IconMemorized /></button
+                    >
                     <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
                     <button class="modal-rating-btn" title="Unknown" data-rating="unknown"><IconUnknown /></button>
                 </div>
@@ -190,7 +197,8 @@ words.sort(() => Math.random() - 0.5);
             <div class="modal-section">
                 <span class="modal-label">Select a rating:</span>
                 <div class="modal-rating-container" id="warning-rating-container">
-                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized"><IconMemorized /></button>
+                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized"><IconMemorized /></button
+                    >
                     <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
                     <button class="modal-rating-btn" title="Unknown" data-rating="unknown"><IconUnknown /></button>
                 </div>
