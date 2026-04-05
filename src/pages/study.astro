@@ -1,6 +1,9 @@
 ---
 import { db, Word, eq, inArray } from "astro:db";
 import Layout from "../layouts/Layout.astro";
+import IconMemorized from "../components/IconMemorized.astro";
+import IconFuzzy from "../components/IconFuzzy.astro";
+import IconUnknown from "../components/IconUnknown.astro";
 
 let isSuccess = false;
 
@@ -124,11 +127,11 @@ words.sort(() => Math.random() - 0.5);
                         <div class="word-content">{word.word}</div>
                         <div class="card-footer">
                             {/* prettier-ignore */}
-                            <button class="rating-option" title="Memorized" data-rating="memorized">✔️</button>
+                            <button class="rating-option" title="Memorized" data-rating="memorized"><IconMemorized /></button>
                             {/* prettier-ignore */}
-                            <button class="rating-option" title="Fuzzy" data-rating="fuzzy">🤨</button>
+                            <button class="rating-option" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
                             {/* prettier-ignore */}
-                            <button class="rating-option" title="Unknown" data-rating="unknown">❓</button>
+                            <button class="rating-option" title="Unknown" data-rating="unknown"><IconUnknown /></button>
                         </div>
                     </div>
                 ))
@@ -164,9 +167,9 @@ words.sort(() => Math.random() - 0.5);
             <div class="modal-footer">
                 <p class="modal-footer-text">How well do you know this word?</p>
                 <div class="modal-rating-container">
-                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized">✔️</button>
-                    <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy">🤨</button>
-                    <button class="modal-rating-btn" title="Unknown" data-rating="unknown">❓</button>
+                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized"><IconMemorized /></button>
+                    <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
+                    <button class="modal-rating-btn" title="Unknown" data-rating="unknown"><IconUnknown /></button>
                 </div>
             </div>
         </div>
@@ -187,9 +190,9 @@ words.sort(() => Math.random() - 0.5);
             <div class="modal-section">
                 <span class="modal-label">Select a rating:</span>
                 <div class="modal-rating-container" id="warning-rating-container">
-                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized">✔️</button>
-                    <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy">🤨</button>
-                    <button class="modal-rating-btn" title="Unknown" data-rating="unknown">❓</button>
+                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized"><IconMemorized /></button>
+                    <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
+                    <button class="modal-rating-btn" title="Unknown" data-rating="unknown"><IconUnknown /></button>
                 </div>
             </div>
 
@@ -285,7 +288,6 @@ words.sort(() => Math.random() - 0.5);
         border: none;
         cursor: pointer;
         padding: 0.5rem;
-        font-size: 1.4rem;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -445,10 +447,12 @@ words.sort(() => Math.random() - 0.5);
         border: 1.5px solid var(--border-color);
         border-radius: 12px;
         padding: 0.75rem 1rem;
-        font-size: 1.5rem;
         cursor: pointer;
         transition: all 0.2s ease;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .modal-rating-btn:hover {
@@ -506,6 +510,14 @@ words.sort(() => Math.random() - 0.5);
     .confirm-btn:disabled {
         background-color: #d1d5db;
         cursor: not-allowed;
+    }
+
+    /* Icon Sizing */
+    :global(.rating-icon) {
+        width: 32px;
+        height: 32px;
+        display: block;
+        pointer-events: none;
     }
 </style>
 
