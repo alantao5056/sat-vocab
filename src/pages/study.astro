@@ -5,8 +5,6 @@ import IconMemorized from "../components/IconMemorized.astro";
 import IconFuzzy from "../components/IconFuzzy.astro";
 import IconUnknown from "../components/IconUnknown.astro";
 
-let isSuccess = false;
-
 if (Astro.request.method === "POST") {
     try {
         const formData = await Astro.request.formData();
@@ -41,12 +39,13 @@ if (Astro.request.method === "POST") {
                         fuzzy_count: newFuzzy,
                         memorized_count: newMemorized,
                         selection_weight: newWeight,
+                        last_rating: rating,
                     };
 
                     await db.update(Word).set(updateSet).where(eq(Word.id, id));
                 }
             }
-            isSuccess = true;
+            return Astro.redirect("/status");
         }
     } catch (error) {
         console.error("Error processing submission:", error);
@@ -111,15 +110,6 @@ words.sort(() => Math.random() - 0.5);
 
 <Layout title="Study - SAT Vocab" headerSubtitle="Tap any card to view details">
     <main>
-        {
-            isSuccess && (
-                <div class="success-banner">
-                    <span>🎉</span>
-                    <p>Progress saved! Here are your next 10 words.</p>
-                </div>
-            )
-        }
-
         <div class="word-grid">
             {
                 words.map((word) => (

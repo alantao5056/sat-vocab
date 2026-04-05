@@ -1,0 +1,187 @@
+---
+import { db, Word } from "astro:db";
+import Layout from "../layouts/Layout.astro";
+
+const allWords = await db
+    .select({
+        last_rating: Word.last_rating,
+    })
+    .from(Word);
+
+const totalWords = allWords.length;
+
+let memorized = 0;
+let fuzzy = 0;
+let unknown = 0;
+let unseen = 0;
+
+for (const word of allWords) {
+    if (word.last_rating === "memorized") memorized++;
+    else if (word.last_rating === "fuzzy") fuzzy++;
+    else if (word.last_rating === "unknown") unknown++;
+    else unseen++;
+}
+
+const progressPercentage = totalWords > 0 ? Math.round((memorized / totalWords) * 100) : 0;
+---
+
+<Layout title="Status - SAT Vocab" headerSubtitle="Your learning progress">
+    <main>
+        <div class="stats-card">
+            <h2>Overall Progress</h2>
+            <div class="progress-display">
+                <span class="progress-number">{progressPercentage}%</span>
+                <span class="progress-label">Memorized</span>
+            </div>
+
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" style={`width: ${progressPercentage}%`}></div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-value">{memorized}</span>
+                    <span class="stat-name">Memorized</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{fuzzy}</span>
+                    <span class="stat-name">Fuzzy</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{unknown}</span>
+                    <span class="stat-name">Unknown</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{unseen}</span>
+                    <span class="stat-name">Unseen</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-container">
+            <a href="/study" class="continue-btn">Continue Studying</a>
+        </div>
+    </main>
+</Layout>
+
+<style>
+    main {
+        flex: 1;
+        padding: 1.5rem 1rem;
+        max-width: 500px;
+        margin: 0 auto;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+    }
+
+    .stats-card {
+        background-color: var(--card-bg, #ffffff);
+        border-radius: 16px;
+        padding: 2rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        text-align: center;
+    }
+
+    h2 {
+        font-size: 1.5rem;
+        color: var(--text-dark, #1f2937);
+        margin-bottom: 1.5rem;
+    }
+
+    .progress-display {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .progress-number {
+        font-size: 3.5rem;
+        font-weight: 800;
+        color: var(--primary-blue, #4f46e5);
+        line-height: 1;
+    }
+
+    .progress-label {
+        font-size: 1rem;
+        color: var(--text-gray, #6b7280);
+        margin-top: 0.25rem;
+    }
+
+    .progress-bar-container {
+        width: 100%;
+        height: 12px;
+        background-color: var(--bg-light, #f3f4f6);
+        border-radius: 9999px;
+        overflow: hidden;
+        margin-bottom: 2rem;
+    }
+
+    .progress-bar-fill {
+        height: 100%;
+        background-color: var(--primary-blue, #4f46e5);
+        border-radius: 9999px;
+        transition: width 1s ease-out;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+
+    .stat-item {
+        background-color: var(--bg-light, #f3f4f6);
+        padding: 1rem;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-dark, #1f2937);
+    }
+
+    .stat-name {
+        font-size: 0.875rem;
+        color: var(--text-gray, #6b7280);
+        margin-top: 0.25rem;
+    }
+
+    .action-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .continue-btn {
+        width: 100%;
+        background-color: var(--primary-blue, #4f46e5);
+        color: white;
+        border: none;
+        padding: 1.1rem 2rem;
+        border-radius: 12px;
+        font-size: 1.15rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+        text-decoration: none;
+        box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+        transition:
+            transform 0.1s ease,
+            background-color 0.2s ease;
+    }
+
+    .continue-btn:hover {
+        background-color: var(--primary-dark, #4338ca);
+    }
+
+    .continue-btn:active {
+        transform: scale(0.99);
+    }
+</style>
