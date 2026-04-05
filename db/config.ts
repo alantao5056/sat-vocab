@@ -12,7 +12,14 @@ const Word = defineTable({
         fuzzy_count: column.number({ default: 0 }),
         unknown_count: column.number({ default: 0 }),
         selection_weight: column.number({ default: 50 }),
-        last_rating: column.text({ default: "unseen" }),
+        last_rating: column.text({ optional: true }),
+    },
+});
+
+const Session = defineTable({
+    columns: {
+        word_id: column.number({ primaryKey: true }),
+        order: column.number(),
     },
 });
 
@@ -20,5 +27,6 @@ const Word = defineTable({
 export default defineDb({
     tables: {
         Word,
+        Session,
     },
 });

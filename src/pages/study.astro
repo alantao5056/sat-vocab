@@ -1,5 +1,6 @@
 ---
-import { db, Word, eq, inArray } from "astro:db";
+import { db, Word, Session, eq, inArray, notInArray } from "astro:db";
+import { STUDY_BATCH_SIZE } from "../config";
 import Layout from "../layouts/Layout.astro";
 import IconMemorized from "../components/IconMemorized.astro";
 import IconFuzzy from "../components/IconFuzzy.astro";
@@ -45,6 +46,10 @@ if (Astro.request.method === "POST") {
                     await db.update(Word).set(updateSet).where(eq(Word.id, id));
                 }
             }
+
+            // Clear session on successful submission
+            await db.delete(Session);
+
             return Astro.redirect("/status");
         }
     } catch (error) {
@@ -52,50 +57,85 @@ if (Astro.request.method === "POST") {
     }
 }
 
-// Fetch ONLY ids and weights for all words to perform efficient weighted random selection
-const allWordsWeights = await db
-    .select({
-        id: Word.id,
-        selection_weight: Word.selection_weight,
-    })
-    .from(Word);
+// Fetch existing session words
+const sessionWords = await db.select().from(Session);
+const selectedIds = new Set<number>(sessionWords.map((s) => s.word_id));
 
-// Weighted random selection with binary search and rejection sampling
-const selectedIds = new Set<number>();
-if (allWordsWeights.length > 0) {
-    // 1. Build cumulative weights array once
-    const cumulativeWeights: number[] = [];
-    let currentTotal = 0;
-    for (const word of allWordsWeights) {
-        currentTotal += word.selection_weight;
-        cumulativeWeights.push(currentTotal);
+// Determine if we need to pick more
+if (selectedIds.size < STUDY_BATCH_SIZE) {
+    const newlySelectedIds = new Set<number>();
+
+    // Fetch weights, excluding already selected
+    let weightsQuery = db
+        .select({
+            id: Word.id,
+            selection_weight: Word.selection_weight,
+        })
+        .from(Word);
+
+    if (selectedIds.size > 0) {
+        weightsQuery = weightsQuery.where(notInArray(Word.id, Array.from(selectedIds)));
     }
-    const totalWeight = currentTotal;
 
-    // 2. Select 10 unique word IDs
-    const neededCount = Math.min(10, allWordsWeights.length);
+    const allWordsWeights = await weightsQuery;
 
-    while (selectedIds.size < neededCount && totalWeight > 0) {
-        // Random value between 0 and totalWeight
-        const r = Math.random() * totalWeight;
+    if (allWordsWeights.length > 0) {
+        // 1. Build cumulative weights array once
+        const cumulativeWeights: number[] = [];
+        let currentTotal = 0;
+        for (const word of allWordsWeights) {
+            currentTotal += word.selection_weight;
+            cumulativeWeights.push(currentTotal);
+        }
+        const totalWeight = currentTotal;
 
-        // Binary search for the index
-        let low = 0;
-        let high = cumulativeWeights.length - 1;
-        while (low < high) {
-            const mid = Math.floor((low + high) / 2);
-            if (cumulativeWeights[mid] <= r) {
-                low = mid + 1;
-            } else {
-                high = mid;
+        // 2. Select remaining required word IDs
+        const neededCount = Math.min(STUDY_BATCH_SIZE - selectedIds.size, allWordsWeights.length);
+        let newlySelectedCount = 0;
+
+        while (newlySelectedCount < neededCount && totalWeight > 0) {
+            // Random value between 0 and totalWeight
+            const r = Math.random() * totalWeight;
+
+            // Binary search for the index
+            let low = 0;
+            let high = cumulativeWeights.length - 1;
+            while (low < high) {
+                const mid = Math.floor((low + high) / 2);
+                if (cumulativeWeights[mid] <= r) {
+                    low = mid + 1;
+                } else {
+                    high = mid;
+                }
+            }
+
+            const id = allWordsWeights[low].id;
+            if (!newlySelectedIds.has(id)) {
+                newlySelectedIds.add(id);
+                newlySelectedCount++;
             }
         }
 
-        selectedIds.add(allWordsWeights[low].id);
+        // Insert newly selected IDs into Session
+        if (newlySelectedIds.size > 0) {
+            const maxOrder = sessionWords.reduce((max, s) => Math.max(max, s.order), -1);
+            let nextOrder = maxOrder + 1;
+            const insertData = Array.from(newlySelectedIds).map((id) => ({
+                word_id: id,
+                order: nextOrder++,
+            }));
+            await db.insert(Session).values(insertData).onConflictDoNothing();
+
+            // Merge newly selected IDs into selectedIds
+            newlySelectedIds.forEach((id) => selectedIds.add(id));
+
+            // Append to sessionWords to ensure orderMap is correct later
+            insertData.forEach((item) => sessionWords.push(item));
+        }
     }
 }
 
-// Fetch the full data for the 10 selected words
+// Fetch the full data for the selected words
 const words =
     selectedIds.size > 0
         ? await db
@@ -104,8 +144,15 @@ const words =
               .where(inArray(Word.id, Array.from(selectedIds)))
         : [];
 
-// Shuffle the fetched words so they aren't always in database ID order
-words.sort(() => Math.random() - 0.5);
+// Create an order map from the session data
+const orderMap = new Map(sessionWords.map((s) => [s.word_id, s.order]));
+
+// Sort the fetched words by their original session order
+words.sort((a, b) => {
+    const orderA = orderMap.get(a.id) ?? 0;
+    const orderB = orderMap.get(b.id) ?? 0;
+    return orderA - orderB;
+});
 ---
 
 <Layout title="Study - SAT Vocab" headerSubtitle="Tap any card to view details">

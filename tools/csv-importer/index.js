@@ -58,18 +58,27 @@ fs.createReadStream(csvPath)
             "memorized_count" INTEGER NOT NULL DEFAULT 0,
             "fuzzy_count" INTEGER NOT NULL DEFAULT 0,
             "unknown_count" INTEGER NOT NULL DEFAULT 0,
-            "selection_weight" INTEGER NOT NULL DEFAULT 50
+            "selection_weight" INTEGER NOT NULL DEFAULT 50,
+            "last_rating" TEXT
+        )
+    `);
+
+        await db.execute(`
+        CREATE TABLE IF NOT EXISTS "Session" (
+            "word_id" INTEGER PRIMARY KEY,
+            "order" INTEGER NOT NULL
         )
     `);
 
         // Clear existing
         await db.execute('DELETE FROM "Word"');
+        await db.execute('DELETE FROM "Session"');
 
         // Batch insert
         console.log("Inserting records...");
         const statements = wordsToInsert.map((row) => {
             return {
-                sql: `INSERT INTO "Word" (word, definition, example, flagged, total_views, memorized_count, fuzzy_count, unknown_count, selection_weight) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                sql: `INSERT INTO "Word" (word, definition, example, flagged, total_views, memorized_count, fuzzy_count, unknown_count, selection_weight, last_rating) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 args: [
                     row.word,
                     row.definition,
@@ -80,6 +89,7 @@ fs.createReadStream(csvPath)
                     row.fuzzy_count,
                     row.unknown_count,
                     row.selection_weight,
+                    null,
                 ],
             };
         });
