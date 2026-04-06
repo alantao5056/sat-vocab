@@ -9,10 +9,12 @@ const { subtitle } = Astro.props;
 ---
 
 <header>
-    <h1>
-        <Logo class="header-logo" size={22} />
-        SAT Vocab
-    </h1>
+    <a href="/" class="header-link">
+        <h1>
+            <Logo class="header-logo" size={22} />
+            SAT Vocab
+        </h1>
+    </a>
     {subtitle && <p class="subtitle">{subtitle}</p>}
 </header>
 
@@ -25,6 +27,11 @@ const { subtitle } = Astro.props;
         border-bottom: 2px solid var(--primary-blue);
         position: relative;
         z-index: 10;
+    }
+
+    .header-link {
+        text-decoration: none;
+        display: inline-block;
     }
 
     h1 {
