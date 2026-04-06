@@ -2,6 +2,8 @@
 import { db, Word } from "astro:db";
 import Layout from "../layouts/Layout.astro";
 
+const mode = Astro.url.searchParams.get("mode");
+
 const allWords = await db
     .select({
         last_rating: Word.last_rating,
@@ -59,7 +61,9 @@ const progressPercentage = totalWords > 0 ? Math.round((memorized / totalWords) 
         </div>
 
         <div class="action-container">
-            <a href="/study" class="continue-btn">Continue Studying</a>
+            <a href={mode === "review" ? "/study?mode=review" : "/study"} class="continue-btn">
+                {mode === "review" ? "Continue Reviewing" : "Continue Studying"}
+            </a>
             <a href="/" class="home-link">Back to Home</a>
         </div>
     </main>
