@@ -12,6 +12,7 @@ import Logo from "../components/Logo.astro";
         <p class="subtitle">Master your SAT vocabulary with interactive flashcards</p>
 
         <a href="/study" class="start-btn">Start Learning</a>
+        <a href="/study?mode=review" class="review-btn">Review Mode</a>
         <a href="/status" class="status-link">View Progress</a>
 
         <p class="helper-text">10 words • Tap cards to reveal definitions</p>
@@ -83,6 +84,32 @@ import Logo from "../components/Logo.astro";
     .start-btn:active {
         transform: scale(0.98);
         background-color: var(--primary-dark);
+    }
+
+    .review-btn {
+        display: inline-block;
+        width: 100%;
+        background-color: transparent;
+        color: var(--primary-blue);
+        border: 2px solid var(--primary-blue);
+        text-decoration: none;
+        padding: 1.1rem 2rem;
+        border-radius: 12px;
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        transition:
+            transform 0.2s ease,
+            background-color 0.2s ease;
+    }
+
+    .review-btn:hover {
+        background-color: var(--bg-light);
+    }
+
+    .review-btn:active {
+        transform: scale(0.98);
+        background-color: #e0e7ff;
     }
 
     .status-link {

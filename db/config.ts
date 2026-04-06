@@ -14,13 +14,20 @@ const Word = defineTable({
         selection_weight: column.number({ default: 50 }),
         last_rating: column.text({ optional: true }),
     },
+    indexes: [{ on: "last_rating" }],
 });
 
+const sessionColumns = {
+    word_id: column.number({ primaryKey: true }),
+    order: column.number(),
+};
+
 const Session = defineTable({
-    columns: {
-        word_id: column.number({ primaryKey: true }),
-        order: column.number(),
-    },
+    columns: sessionColumns,
+});
+
+const ReviewSession = defineTable({
+    columns: sessionColumns,
 });
 
 // https://astro.build/db/config
@@ -28,5 +35,6 @@ export default defineDb({
     tables: {
         Word,
         Session,
+        ReviewSession,
     },
 });

@@ -1,10 +1,13 @@
 ---
-import { db, Word, Session, eq, inArray, notInArray } from "astro:db";
+import { db, Word, Session, ReviewSession, eq, inArray, notInArray, and, isNotNull } from "astro:db";
 import { STUDY_BATCH_SIZE } from "../config";
 import Layout from "../layouts/Layout.astro";
 import IconMemorized from "../components/IconMemorized.astro";
 import IconFuzzy from "../components/IconFuzzy.astro";
 import IconUnknown from "../components/IconUnknown.astro";
+
+const mode = Astro.url.searchParams.get("mode");
+const CurrentSessionTable = mode === "review" ? ReviewSession : Session;
 
 if (Astro.request.method === "POST") {
     try {
@@ -48,9 +51,9 @@ if (Astro.request.method === "POST") {
             }
 
             // Clear session on successful submission
-            await db.delete(Session);
+            await db.delete(CurrentSessionTable);
 
-            return Astro.redirect("/status");
+            return Astro.redirect(mode === "review" ? "/status?mode=review" : "/status");
         }
     } catch (error) {
         console.error("Error processing submission:", error);
@@ -58,7 +61,7 @@ if (Astro.request.method === "POST") {
 }
 
 // Fetch existing session words
-const sessionWords = await db.select().from(Session);
+const sessionWords = await db.select().from(CurrentSessionTable);
 const selectedIds = new Set<number>(sessionWords.map((s) => s.word_id));
 
 // Determine if we need to pick more
@@ -66,18 +69,24 @@ if (selectedIds.size < STUDY_BATCH_SIZE) {
     const newlySelectedIds = new Set<number>();
 
     // Fetch weights, excluding already selected
-    let weightsQuery = db
+    const weightsQuery = db
         .select({
             id: Word.id,
             selection_weight: Word.selection_weight,
         })
         .from(Word);
 
+    const conditions = [];
+
     if (selectedIds.size > 0) {
-        weightsQuery = weightsQuery.where(notInArray(Word.id, Array.from(selectedIds)));
+        conditions.push(notInArray(Word.id, Array.from(selectedIds)));
     }
 
-    const allWordsWeights = await weightsQuery;
+    if (mode === "review") {
+        conditions.push(isNotNull(Word.last_rating));
+    }
+
+    const allWordsWeights = conditions.length > 0 ? await weightsQuery.where(and(...conditions)) : await weightsQuery;
 
     if (allWordsWeights.length > 0) {
         // 1. Build cumulative weights array once
@@ -124,7 +133,7 @@ if (selectedIds.size < STUDY_BATCH_SIZE) {
                 word_id: id,
                 order: nextOrder++,
             }));
-            await db.insert(Session).values(insertData).onConflictDoNothing();
+            await db.insert(CurrentSessionTable).values(insertData).onConflictDoNothing();
 
             // Merge newly selected IDs into selectedIds
             newlySelectedIds.forEach((id) => selectedIds.add(id));
@@ -157,38 +166,55 @@ words.sort((a, b) => {
 
 <Layout title="Study - SAT Vocab" headerSubtitle="Tap any card to view details">
     <main>
-        <div class="word-grid">
-            {
-                words.map((word) => (
-                    <div
-                        class="word-card"
-                        data-id={word.id}
-                        data-word={word.word}
-                        data-definition={word.definition}
-                        data-example={word.example}
-                    >
-                        <div class="word-content">{word.word}</div>
-                        <div class="card-footer">
-                            {/* prettier-ignore */}
-                            <button class="rating-option" title="Memorized" data-rating="memorized"><IconMemorized /></button>
-                            {/* prettier-ignore */}
-                            <button class="rating-option" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
-                            {/* prettier-ignore */}
-                            <button class="rating-option" title="Unknown" data-rating="unknown"><IconUnknown /></button>
-                        </div>
+        {
+            words.length === 0 && mode === "review" ? (
+                <div class="empty-state">
+                    <h2>No Words to Review</h2>
+                    <p>
+                        You haven't studied any words yet (or you've reviewed them all in this session). Start learning
+                        new words first!
+                    </p>
+                    <a href="/" class="submit-btn empty-state-btn">
+                        Go to Home
+                    </a>
+                </div>
+            ) : (
+                <Fragment>
+                    <div class="word-grid">
+                        {words.map((word) => (
+                            <div
+                                class="word-card"
+                                data-id={word.id}
+                                data-word={word.word}
+                                data-definition={word.definition}
+                                data-example={word.example}
+                            >
+                                <div class="word-content">{word.word}</div>
+                                <div class="card-footer">
+                                    {/* prettier-ignore */}
+                                    <button class="rating-option" title="Memorized" data-rating="memorized"><IconMemorized /></button>
+                                    {/* prettier-ignore */}
+                                    <button class="rating-option" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
+                                    {/* prettier-ignore */}
+                                    <button class="rating-option" title="Unknown" data-rating="unknown"><IconUnknown /></button>
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                ))
-            }
-        </div>
 
-        <div class="submit-container">
-            <button class="submit-btn" id="submit-btn">Submit Progress</button>
-        </div>
+                    <div class="submit-container">
+                        <button class="submit-btn" id="submit-btn">
+                            Submit Progress
+                        </button>
+                    </div>
 
-        <!-- Hidden form for submission -->
-        <form id="ratings-form" method="POST" style="display: none;">
-            <input type="hidden" name="ratings" id="ratings-input" />
-        </form>
+                    {/* Hidden form for submission */}
+                    <form id="ratings-form" method="POST" style="display: none;">
+                        <input type="hidden" name="ratings" id="ratings-input" />
+                    </form>
+                </Fragment>
+            )
+        }
     </main>
 
     <!-- Word Detail Modal -->
@@ -256,6 +282,33 @@ words.sort((a, b) => {
         max-width: 500px;
         margin: 0 auto;
         width: 100%;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .empty-state h2 {
+        font-size: 1.5rem;
+        color: var(--text-dark);
+        margin: 0;
+    }
+
+    .empty-state p {
+        color: var(--text-gray);
+        line-height: 1.5;
+        margin: 0;
+    }
+
+    .empty-state-btn {
+        display: inline-block;
+        text-decoration: none;
+        width: auto;
     }
 
     .success-banner {
