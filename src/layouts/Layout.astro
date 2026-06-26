@@ -5,9 +5,10 @@ interface Props {
     title: string;
     showHeader?: boolean;
     headerSubtitle?: string;
+    user?: { email: string };
 }
 
-const { title, showHeader = true, headerSubtitle } = Astro.props;
+const { title, showHeader = true, headerSubtitle, user } = Astro.props;
 ---
 
 <!doctype html>
@@ -59,7 +60,7 @@ const { title, showHeader = true, headerSubtitle } = Astro.props;
         </style>
     </head>
     <body>
-        {showHeader && <Header subtitle={headerSubtitle} />}
+        {showHeader && <Header subtitle={headerSubtitle} user={user} />}
         <slot />
     </body>
 </html>

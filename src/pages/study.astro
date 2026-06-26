@@ -1,13 +1,14 @@
 ---
-import { db, Word, Session, ReviewSession, eq, inArray, notInArray, and, isNotNull } from "astro:db";
 import { STUDY_BATCH_SIZE } from "../config";
+import { getVocabDb } from "../lib/vocab-db";
 import Layout from "../layouts/Layout.astro";
 import IconMemorized from "../components/IconMemorized.astro";
 import IconFuzzy from "../components/IconFuzzy.astro";
 import IconUnknown from "../components/IconUnknown.astro";
 
+const db = getVocabDb(Astro.locals.dbPath!);
 const mode = Astro.url.searchParams.get("mode");
-const CurrentSessionTable = mode === "review" ? ReviewSession : Session;
+const sessionTable = mode === "review" ? "ReviewSession" : "Session";
 
 if (Astro.request.method === "POST") {
     try {
@@ -15,43 +16,56 @@ if (Astro.request.method === "POST") {
         const ratingsJson = formData.get("ratings") as string;
 
         if (ratingsJson) {
-            const ratings = JSON.parse(ratingsJson);
-            const submittedIds = ratings.map((r: any) => r.id);
+            const ratings: { id: number; rating: string }[] = JSON.parse(ratingsJson);
+            const submittedIds = ratings.map((r) => r.id);
 
-            // Fetch all words being updated at once
-            const wordsToUpdate = await db.select().from(Word).where(inArray(Word.id, submittedIds));
-            const wordsMap = new Map(wordsToUpdate.map((w) => [w.id, w]));
+            if (submittedIds.length > 0) {
+                // Fetch all words being updated at once
+                const placeholders = submittedIds.map(() => "?").join(",");
+                const wordsResult = await db.execute({
+                    sql: `SELECT * FROM "Word" WHERE id IN (${placeholders})`,
+                    args: submittedIds,
+                });
+                const wordsMap = new Map(wordsResult.rows.map((w) => [Number(w.id), w]));
 
-            // Iterate over ratings and update each word
-            for (const { id, rating } of ratings) {
-                const currentWord = wordsMap.get(id);
+                // Build an update statement for each rated word
+                const updateStatements = [];
+                for (const { id, rating } of ratings) {
+                    const currentWord = wordsMap.get(id);
 
-                if (currentWord) {
-                    let newUnknown = currentWord.unknown_count;
-                    let newFuzzy = currentWord.fuzzy_count;
-                    let newMemorized = currentWord.memorized_count;
+                    if (currentWord) {
+                        let newUnknown = Number(currentWord.unknown_count);
+                        let newFuzzy = Number(currentWord.fuzzy_count);
+                        let newMemorized = Number(currentWord.memorized_count);
 
-                    if (rating === "memorized") newMemorized++;
-                    else if (rating === "fuzzy") newFuzzy++;
-                    else if (rating === "unknown") newUnknown++;
+                        if (rating === "memorized") newMemorized++;
+                        else if (rating === "fuzzy") newFuzzy++;
+                        else if (rating === "unknown") newUnknown++;
 
-                    const newWeight = Math.max(1, 10 + newUnknown * 50 + newFuzzy * 20 - newMemorized * 30);
+                        const newWeight = Math.max(1, 10 + newUnknown * 50 + newFuzzy * 20 - newMemorized * 30);
 
-                    const updateSet: Record<string, any> = {
-                        total_views: currentWord.total_views + 1,
-                        unknown_count: newUnknown,
-                        fuzzy_count: newFuzzy,
-                        memorized_count: newMemorized,
-                        selection_weight: newWeight,
-                        last_rating: rating,
-                    };
+                        updateStatements.push({
+                            sql: `UPDATE "Word" SET total_views = ?, unknown_count = ?, fuzzy_count = ?, memorized_count = ?, selection_weight = ?, last_rating = ? WHERE id = ?`,
+                            args: [
+                                Number(currentWord.total_views) + 1,
+                                newUnknown,
+                                newFuzzy,
+                                newMemorized,
+                                newWeight,
+                                rating,
+                                id,
+                            ],
+                        });
+                    }
+                }
 
-                    await db.update(Word).set(updateSet).where(eq(Word.id, id));
+                if (updateStatements.length > 0) {
+                    await db.batch(updateStatements, "write");
                 }
             }
 
             // Clear session on successful submission
-            await db.delete(CurrentSessionTable);
+            await db.execute(`DELETE FROM "${sessionTable}"`);
 
             return Astro.redirect(mode === "review" ? "/status?mode=review" : "/status");
         }
@@ -61,7 +75,8 @@ if (Astro.request.method === "POST") {
 }
 
 // Fetch existing session words
-const sessionWords = await db.select().from(CurrentSessionTable);
+const sessionResult = await db.execute(`SELECT word_id, "order" FROM "${sessionTable}"`);
+const sessionWords = sessionResult.rows.map((r) => ({ word_id: Number(r.word_id), order: Number(r.order) }));
 const selectedIds = new Set<number>(sessionWords.map((s) => s.word_id));
 
 // Determine if we need to pick more
@@ -69,24 +84,31 @@ if (selectedIds.size < STUDY_BATCH_SIZE) {
     const newlySelectedIds = new Set<number>();
 
     // Fetch weights, excluding already selected
-    const weightsQuery = db
-        .select({
-            id: Word.id,
-            selection_weight: Word.selection_weight,
-        })
-        .from(Word);
-
-    const conditions = [];
+    let weightsSql = `SELECT id, selection_weight FROM "Word"`;
+    const weightsArgs: number[] = [];
+    const whereClauses: string[] = [];
 
     if (selectedIds.size > 0) {
-        conditions.push(notInArray(Word.id, Array.from(selectedIds)));
+        const placeholders = Array.from(selectedIds)
+            .map(() => "?")
+            .join(",");
+        whereClauses.push(`id NOT IN (${placeholders})`);
+        weightsArgs.push(...Array.from(selectedIds));
     }
 
     if (mode === "review") {
-        conditions.push(isNotNull(Word.last_rating));
+        whereClauses.push(`last_rating IS NOT NULL`);
     }
 
-    const allWordsWeights = conditions.length > 0 ? await weightsQuery.where(and(...conditions)) : await weightsQuery;
+    if (whereClauses.length > 0) {
+        weightsSql += ` WHERE ` + whereClauses.join(" AND ");
+    }
+
+    const weightsResult = await db.execute({ sql: weightsSql, args: weightsArgs });
+    const allWordsWeights = weightsResult.rows.map((r) => ({
+        id: Number(r.id),
+        selection_weight: Number(r.selection_weight),
+    }));
 
     if (allWordsWeights.length > 0) {
         // 1. Build cumulative weights array once
@@ -125,7 +147,7 @@ if (selectedIds.size < STUDY_BATCH_SIZE) {
             }
         }
 
-        // Insert newly selected IDs into Session
+        // Insert newly selected IDs into the session table
         if (newlySelectedIds.size > 0) {
             const maxOrder = sessionWords.reduce((max, s) => Math.max(max, s.order), -1);
             let nextOrder = maxOrder + 1;
@@ -133,7 +155,15 @@ if (selectedIds.size < STUDY_BATCH_SIZE) {
                 word_id: id,
                 order: nextOrder++,
             }));
-            await db.insert(CurrentSessionTable).values(insertData).onConflictDoNothing();
+            const valuePlaceholders = insertData.map(() => "(?, ?)").join(",");
+            const insertArgs: number[] = [];
+            for (const item of insertData) {
+                insertArgs.push(item.word_id, item.order);
+            }
+            await db.execute({
+                sql: `INSERT INTO "${sessionTable}" (word_id, "order") VALUES ${valuePlaceholders} ON CONFLICT DO NOTHING`,
+                args: insertArgs,
+            });
 
             // Merge newly selected IDs into selectedIds
             newlySelectedIds.forEach((id) => selectedIds.add(id));
@@ -145,13 +175,22 @@ if (selectedIds.size < STUDY_BATCH_SIZE) {
 }
 
 // Fetch the full data for the selected words
-const words =
-    selectedIds.size > 0
-        ? await db
-              .select()
-              .from(Word)
-              .where(inArray(Word.id, Array.from(selectedIds)))
-        : [];
+let words: { id: number; word: string; definition: string; example: string }[] = [];
+if (selectedIds.size > 0) {
+    const placeholders = Array.from(selectedIds)
+        .map(() => "?")
+        .join(",");
+    const wordsResult = await db.execute({
+        sql: `SELECT id, word, definition, example FROM "Word" WHERE id IN (${placeholders})`,
+        args: Array.from(selectedIds),
+    });
+    words = wordsResult.rows.map((r) => ({
+        id: Number(r.id),
+        word: r.word as string,
+        definition: r.definition as string,
+        example: r.example as string,
+    }));
+}
 
 // Create an order map from the session data
 const orderMap = new Map(sessionWords.map((s) => [s.word_id, s.order]));
@@ -164,7 +203,7 @@ words.sort((a, b) => {
 });
 ---
 
-<Layout title="Study - SAT Vocab" headerSubtitle="Tap any card to view details">
+<Layout title="Study - SAT Vocab" headerSubtitle="Tap any card to view details" user={Astro.locals.user}>
     <main>
         {
             words.length === 0 && mode === "review" ? (

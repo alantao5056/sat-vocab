@@ -1,20 +1,36 @@
 ---
 import Logo from "./Logo.astro";
+import IconLogout from "./IconLogout.astro";
 
 interface Props {
     subtitle?: string;
+    user?: { email: string };
 }
 
-const { subtitle } = Astro.props;
+const { subtitle, user } = Astro.props;
 ---
 
 <header>
-    <a href="/" class="header-link">
-        <h1>
-            <Logo class="header-logo" size={22} />
-            SAT Vocab
-        </h1>
-    </a>
+    <div class="header-top">
+        <a href="/" class="header-link">
+            <h1>
+                <Logo class="header-logo" size={22} />
+                SAT Vocab
+            </h1>
+        </a>
+        {
+            user && (
+                <div class="user-menu">
+                    <span class="user-email">{user.email}</span>
+                    <form method="POST" action="/logout">
+                        <button type="submit" class="logout-btn" title="Logout" aria-label="Logout">
+                            <IconLogout size={18} />
+                        </button>
+                    </form>
+                </div>
+            )
+        }
+    </div>
     {subtitle && <p class="subtitle">{subtitle}</p>}
 </header>
 
@@ -27,6 +43,13 @@ const { subtitle } = Astro.props;
         border-bottom: 2px solid var(--primary-blue);
         position: relative;
         z-index: 10;
+    }
+
+    .header-top {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
     }
 
     .header-link {
@@ -50,9 +73,52 @@ const { subtitle } = Astro.props;
         color: var(--primary-blue);
     }
 
+    .user-menu {
+        position: absolute;
+        right: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+
+    .user-email {
+        font-size: 0.8rem;
+        color: var(--text-gray);
+        max-width: 140px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .logout-btn {
+        background: none;
+        border: 1.5px solid var(--border-color);
+        color: var(--text-gray);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem;
+        border-radius: 8px;
+        cursor: pointer;
+        transition:
+            border-color 0.2s ease,
+            color 0.2s ease;
+    }
+
+    .logout-btn:hover {
+        border-color: var(--primary-blue);
+        color: var(--primary-blue);
+    }
+
     .subtitle {
         font-size: 0.85rem;
         font-weight: 500;
         color: var(--text-gray);
+    }
+
+    @media (max-width: 480px) {
+        .user-email {
+            display: none;
+        }
     }
 </style>

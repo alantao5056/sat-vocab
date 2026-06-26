@@ -1,28 +1,42 @@
 ---
+import { randomUUID } from "node:crypto";
 import Layout from "../layouts/Layout.astro";
 import Logo from "../components/Logo.astro";
-import { getUserByEmail } from "../lib/management-db";
-import { verifyPassword, startSession, isGoogleConfigured } from "../lib/auth";
+import { getUserByEmail, createUser } from "../lib/management-db";
+import { hashPassword, provisionUserDb, startSession, isGoogleConfigured } from "../lib/auth";
 
 let error: string | null = null;
+let name = "";
 let email = "";
 
 if (Astro.request.method === "POST") {
     try {
         const data = await Astro.request.formData();
+        name = (data.get("name") as string)?.trim() ?? "";
         email = (data.get("email") as string)?.trim().toLowerCase() ?? "";
         const password = (data.get("password") as string) ?? "";
 
-        const user = email ? await getUserByEmail(email) : null;
-
-        if (user && user.password_hash && (await verifyPassword(password, user.password_hash))) {
-            await startSession(Astro.cookies, user.id);
-            return Astro.redirect("/");
+        if (!name || !email || !password) {
+            error = "All fields are required.";
+        } else if (password.length < 8) {
+            error = "Password must be at least 8 characters.";
+        } else if (await getUserByEmail(email)) {
+            error = "An account with this email already exists.";
         } else {
-            error = "Incorrect email or password.";
+            const id = randomUUID();
+            const dbPath = provisionUserDb(id);
+            await createUser({
+                id,
+                email,
+                name,
+                password_hash: await hashPassword(password),
+                db_path: dbPath,
+            });
+            await startSession(Astro.cookies, id);
+            return Astro.redirect("/");
         }
     } catch (e) {
-        console.error("Error during login:", e);
+        console.error("Error during registration:", e);
         error = "Something went wrong. Please try again.";
     }
 }
@@ -30,37 +44,33 @@ if (Astro.request.method === "POST") {
 const googleEnabled = isGoogleConfigured();
 ---
 
-<Layout title="Login - SAT Vocab" showHeader={false}>
+<Layout title="Register - SAT Vocab" showHeader={false}>
     <main>
         <div class="icon-container">
             <Logo size={70} class="main-logo" />
         </div>
-        <h1>SAT Vocab</h1>
-        <p class="subtitle">Master your SAT vocabulary with interactive flashcards</p>
+        <h1>Create Account</h1>
+        <p class="subtitle">Start mastering your SAT vocabulary</p>
 
         <form method="POST">
             <div class="input-group">
-                <input
-                    type="email"
-                    name="email"
-                    required
-                    placeholder="Email"
-                    value={email}
-                    autocomplete="email"
-                    autofocus
-                />
+                <input type="text" name="name" required placeholder="Name" value={name} autocomplete="name" />
+            </div>
+            <div class="input-group">
+                <input type="email" name="email" required placeholder="Email" value={email} autocomplete="email" />
             </div>
             <div class="input-group">
                 <input
                     type="password"
                     name="password"
                     required
-                    placeholder="Password"
-                    autocomplete="current-password"
+                    minlength="8"
+                    placeholder="Password (min 8 characters)"
+                    autocomplete="new-password"
                 />
             </div>
             {error && <p class="error-msg">{error}</p>}
-            <button type="submit" class="submit-btn">Log In</button>
+            <button type="submit" class="submit-btn">Create Account</button>
         </form>
 
         {
@@ -76,7 +86,7 @@ const googleEnabled = isGoogleConfigured();
             )
         }
 
-        <p class="helper-text">Don't have an account? <a href="/register">Sign up</a></p>
+        <p class="helper-text">Already have an account? <a href="/login">Log in</a></p>
     </main>
 </Layout>
 
@@ -111,7 +121,7 @@ const googleEnabled = isGoogleConfigured();
     }
 
     h1 {
-        font-size: 2.6rem;
+        font-size: 2.2rem;
         font-weight: 800;
         margin-bottom: 0.75rem;
         letter-spacing: -0.5px;

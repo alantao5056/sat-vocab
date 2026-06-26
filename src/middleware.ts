@@ -1,9 +1,11 @@
 import { defineMiddleware } from "astro:middleware";
+import { getSessionUser } from "./lib/management-db";
+import { SESSION_COOKIE } from "./lib/auth";
 
-const PUBLIC_ROUTES = ["/login"];
+const PUBLIC_ROUTES = ["/login", "/register", "/auth/google", "/auth/google/callback"];
 const PUBLIC_PREFIXES = ["/_astro", "/_image", "/favicon.ico", "/favicon.svg"];
 
-export const onRequest = defineMiddleware((context, next) => {
+export const onRequest = defineMiddleware(async (context, next) => {
     const url = new URL(context.request.url);
 
     // Allow public routes and static assets
@@ -16,13 +18,16 @@ export const onRequest = defineMiddleware((context, next) => {
         }
     }
 
-    // Check authentication
-    const authToken = context.cookies.get("auth_token")?.value;
-    const expectedToken = import.meta.env.SESSION_SECRET;
+    // Resolve the session token to a user
+    const token = context.cookies.get(SESSION_COOKIE)?.value;
+    const user = token ? await getSessionUser(token) : null;
 
-    if (!expectedToken || authToken !== expectedToken) {
+    if (!user) {
         return context.redirect("/login");
     }
+
+    context.locals.user = { id: user.id, email: user.email, name: user.name };
+    context.locals.dbPath = user.db_path;
 
     return next();
 });

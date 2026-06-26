@@ -1,14 +1,12 @@
 ---
-import { db, Word } from "astro:db";
 import Layout from "../layouts/Layout.astro";
+import { getVocabDb } from "../lib/vocab-db";
 
 const mode = Astro.url.searchParams.get("mode");
 
-const allWords = await db
-    .select({
-        last_rating: Word.last_rating,
-    })
-    .from(Word);
+const db = getVocabDb(Astro.locals.dbPath!);
+const result = await db.execute(`SELECT last_rating FROM "Word"`);
+const allWords = result.rows;
 
 const totalWords = allWords.length;
 
@@ -27,7 +25,7 @@ for (const word of allWords) {
 const progressPercentage = totalWords > 0 ? Math.round((memorized / totalWords) * 100) : 0;
 ---
 
-<Layout title="Status - SAT Vocab" headerSubtitle="Your learning progress">
+<Layout title="Status - SAT Vocab" headerSubtitle="Your learning progress" user={Astro.locals.user}>
     <main>
         <div class="stats-card">
             <h2>Overall Progress</h2>

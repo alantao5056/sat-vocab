@@ -3,7 +3,7 @@ import Layout from "../layouts/Layout.astro";
 import Logo from "../components/Logo.astro";
 ---
 
-<Layout title="SAT Vocab - Master Your Vocabulary" showHeader={false}>
+<Layout title="SAT Vocab - Master Your Vocabulary" user={Astro.locals.user}>
     <main>
         <div class="icon-container">
             <Logo size={70} class="main-logo" />

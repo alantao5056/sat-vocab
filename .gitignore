@@ -14,6 +14,7 @@ pnpm-debug.log*
 
 
 # environment variables
+.env
 .env.production
 
 # macOS-specific files
@@ -24,3 +25,8 @@ pnpm-debug.log*
 
 # misc
 tmp/
+
+# local databases (management, template, per-user vocab)
+db/management.db
+db/template.db
+db/users/

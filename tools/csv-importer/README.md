@@ -1,10 +1,10 @@
 # CSV Importer Tool
 
-A standalone Node.js script designed to parse a vocabulary CSV file and generate a database compatible with Astro DB (LibSQL). It can also optionally output a small, randomized JSON file of 50 words for development seeding.
+A standalone Node.js script that parses a vocabulary CSV file and generates the per-user **template vocabulary database** (SQLite/LibSQL) that the app copies for each new user. Point `TEMPLATE_DB_PATH` (see the app's `.env`) at the `.db` file it produces.
 
 ## Features
 
-- Uses `@libsql/client` to generate an SQLite `.db` file that exactly matches the schema of Astro DB.
+- Uses `@libsql/client` to generate an SQLite `.db` file containing the app's `Word`, `Session`, and `ReviewSession` tables.
 - Maps the `Flagged` column to a boolean representation.
 - Optional JSON output containing 50 randomly selected words.
 - Runs completely isolated from the main Astro project's dependencies.
@@ -23,7 +23,7 @@ You can run the script via the default NPM script or manually via Node.
 
 ### Running with NPM (Default paths)
 
-This will read from `../../tmp/words.csv`, output the database to `../../tmp/words.db`, and output the 50 random words to `../../db/words.json`.
+This will read from `../../tmp/words.csv` and output the database to `../../tmp/words.db`. Copy that file to your configured `TEMPLATE_DB_PATH` (e.g. `db/template.db`).
 
 ```bash
 npm start

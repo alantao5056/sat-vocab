@@ -63,16 +63,22 @@ fs.createReadStream(csvPath)
         )
     `);
 
-        await db.execute(`
-        CREATE TABLE IF NOT EXISTS "Session" (
+        await db.execute('CREATE INDEX IF NOT EXISTS "Word_last_rating_idx" ON "Word" ("last_rating")');
+
+        // Session tables persist the in-progress 10-word selection (study vs. review mode).
+        for (const table of ["Session", "ReviewSession"]) {
+            await db.execute(`
+        CREATE TABLE IF NOT EXISTS "${table}" (
             "word_id" INTEGER PRIMARY KEY,
             "order" INTEGER NOT NULL
         )
     `);
+        }
 
         // Clear existing
         await db.execute('DELETE FROM "Word"');
         await db.execute('DELETE FROM "Session"');
+        await db.execute('DELETE FROM "ReviewSession"');
 
         // Batch insert
         console.log("Inserting records...");
