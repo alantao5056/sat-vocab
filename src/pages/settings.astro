@@ -1,0 +1,192 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { getVocabDb, getNewWordsPerDay, getWordsPerRound, setNewWordsPerDay, setWordsPerRound } from "../lib/vocab-db";
+import { INTENSITY_PRESETS, WORDS_PER_ROUND_OPTIONS } from "../config";
+
+if (!Astro.locals.dbPath) return Astro.redirect("/login");
+const db = await getVocabDb(Astro.locals.dbPath);
+
+// Persist a settings change, then redirect back here so the page reflects it.
+// Each form submits exactly one setting, and we only accept values from the
+// fixed option sets (no free-form input).
+if (Astro.request.method === "POST") {
+    const form = await Astro.request.formData();
+
+    const perDay = parseInt((form.get("new_words_per_day") as string) ?? "", 10);
+    if (INTENSITY_PRESETS.some((p) => p.value === perDay)) {
+        await setNewWordsPerDay(db, perDay);
+    }
+
+    const perRound = parseInt((form.get("words_per_round") as string) ?? "", 10);
+    if (WORDS_PER_ROUND_OPTIONS.includes(perRound as (typeof WORDS_PER_ROUND_OPTIONS)[number])) {
+        await setWordsPerRound(db, perRound);
+    }
+
+    return Astro.redirect("/settings");
+}
+
+const newWordsPerDay = await getNewWordsPerDay(db);
+const wordsPerRound = await getWordsPerRound(db);
+---
+
+<Layout title="Settings - SAT Vocab" user={Astro.locals.user}>
+    <main>
+        <div class="settings-page">
+            <h2 class="page-title">Settings</h2>
+
+            <section class="setting-card">
+                <div class="setting-text">
+                    <h3 class="setting-name">New words per day</h3>
+                    <p class="setting-desc">
+                        How many brand-new words may be introduced each day. Due reviews are never capped.
+                    </p>
+                </div>
+                <form method="POST" action="/settings" class="options">
+                    {
+                        INTENSITY_PRESETS.map((preset) => (
+                            <button
+                                type="submit"
+                                name="new_words_per_day"
+                                value={preset.value}
+                                class:list={["option", { active: newWordsPerDay === preset.value }]}
+                            >
+                                <span class="option-label">{preset.label}</span>
+                                <span class="option-value">{preset.value}</span>
+                            </button>
+                        ))
+                    }
+                </form>
+            </section>
+
+            <section class="setting-card">
+                <div class="setting-text">
+                    <h3 class="setting-name">Words per round</h3>
+                    <p class="setting-desc">
+                        How many cards a single study round shows before you're done (a soft cap).
+                    </p>
+                </div>
+                <form method="POST" action="/settings" class="options">
+                    {
+                        WORDS_PER_ROUND_OPTIONS.map((value) => (
+                            <button
+                                type="submit"
+                                name="words_per_round"
+                                value={value}
+                                class:list={["option", { active: wordsPerRound === value }]}
+                            >
+                                <span class="option-value">{value}</span>
+                            </button>
+                        ))
+                    }
+                </form>
+            </section>
+        </div>
+    </main>
+</Layout>
+
+<style>
+    main {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        padding: 2rem 1rem;
+        overflow-y: auto;
+    }
+
+    .settings-page {
+        width: 100%;
+        max-width: 640px;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .page-title {
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: var(--text-dark);
+        letter-spacing: -0.025em;
+        margin-bottom: 0.5rem;
+    }
+
+    .setting-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+    }
+
+    .setting-name {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text-dark);
+    }
+
+    .setting-desc {
+        font-size: 0.85rem;
+        color: var(--text-gray);
+        margin-top: 0.25rem;
+        max-width: 360px;
+    }
+
+    .options {
+        display: flex;
+        gap: 0.4rem;
+        background-color: var(--bg-light);
+        border-radius: 9999px;
+        padding: 0.25rem;
+    }
+
+    .option {
+        border: none;
+        background: none;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.1rem;
+        font-weight: 700;
+        color: var(--text-gray);
+        padding: 0.4rem 0.9rem;
+        border-radius: 9999px;
+        transition:
+            color 0.15s ease,
+            background-color 0.15s ease;
+    }
+
+    .option:hover {
+        color: var(--primary-blue);
+    }
+
+    .option.active {
+        background-color: var(--primary-blue);
+        color: #ffffff;
+    }
+
+    .option-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .option-value {
+        font-size: 0.95rem;
+    }
+
+    @media (max-width: 480px) {
+        .setting-card {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .options {
+            justify-content: space-between;
+        }
+    }
+</style>

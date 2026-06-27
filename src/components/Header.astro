@@ -1,6 +1,7 @@
 ---
 import Logo from "./Logo.astro";
 import IconLogout from "./IconLogout.astro";
+import IconSettings from "./IconSettings.astro";
 
 interface Props {
     subtitle?: string;
@@ -8,22 +9,42 @@ interface Props {
 }
 
 const { subtitle, user } = Astro.props;
+
+const pathname = Astro.url.pathname;
+const isStudy = pathname.startsWith("/study");
+const isStatus = pathname.startsWith("/status");
+const isSettings = pathname.startsWith("/settings");
 ---
 
 <header>
     <div class="header-top">
-        <a href="/" class="header-link">
-            <h1>
-                <Logo class="header-logo" size={22} />
-                SAT Vocab
-            </h1>
-        </a>
+        <div class="header-left">
+            <a href="/study" class="header-link">
+                <h1>
+                    <Logo class="header-logo" size={22} />
+                    SAT Vocab
+                </h1>
+            </a>
+            <nav class="nav">
+                <a href="/study" class:list={["nav-link", { active: isStudy }]}>Study</a>
+                <a href="/status" class:list={["nav-link", { active: isStatus }]}>Progress</a>
+            </nav>
+        </div>
+
         {
             user && (
                 <div class="user-menu">
                     <span class="user-email">{user.email}</span>
+                    <a
+                        href="/settings"
+                        class:list={["icon-btn", { active: isSettings }]}
+                        title="Settings"
+                        aria-label="Settings"
+                    >
+                        <IconSettings size={18} />
+                    </a>
                     <form method="POST" action="/logout">
-                        <button type="submit" class="logout-btn" title="Logout" aria-label="Logout">
+                        <button type="submit" class="icon-btn" title="Logout" aria-label="Logout">
                             <IconLogout size={18} />
                         </button>
                     </form>
@@ -37,19 +58,26 @@ const { subtitle, user } = Astro.props;
 <style>
     header {
         background: linear-gradient(to bottom, #ffffff, #f9fafb);
-        text-align: center;
         padding: 0.6rem 1rem;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         border-bottom: 2px solid var(--primary-blue);
         position: relative;
         z-index: 10;
+        flex-shrink: 0;
     }
 
     .header-top {
         display: flex;
         align-items: center;
-        justify-content: center;
-        position: relative;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
     }
 
     .header-link {
@@ -64,18 +92,42 @@ const { subtitle, user } = Astro.props;
         letter-spacing: -0.025em;
         display: flex;
         align-items: center;
-        justify-content: center;
         gap: 0.5rem;
-        margin-bottom: 0.1rem;
     }
 
     :global(.header-logo) {
         color: var(--primary-blue);
     }
 
+    .nav {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .nav-link {
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text-gray);
+        padding: 0.35rem 0.75rem;
+        border-radius: 8px;
+        transition:
+            color 0.2s ease,
+            background-color 0.2s ease;
+    }
+
+    .nav-link:hover {
+        color: var(--primary-blue);
+        background-color: var(--bg-light);
+    }
+
+    .nav-link.active {
+        color: var(--primary-blue);
+        background-color: #eef2ff;
+    }
+
     .user-menu {
-        position: absolute;
-        right: 0;
         display: flex;
         align-items: center;
         gap: 0.6rem;
@@ -84,13 +136,10 @@ const { subtitle, user } = Astro.props;
     .user-email {
         font-size: 0.8rem;
         color: var(--text-gray);
-        max-width: 140px;
-        overflow: hidden;
-        text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    .logout-btn {
+    .icon-btn {
         background: none;
         border: 1.5px solid var(--border-color);
         color: var(--text-gray);
@@ -100,25 +149,43 @@ const { subtitle, user } = Astro.props;
         padding: 0.35rem;
         border-radius: 8px;
         cursor: pointer;
+        text-decoration: none;
         transition:
             border-color 0.2s ease,
             color 0.2s ease;
     }
 
-    .logout-btn:hover {
+    .icon-btn:hover {
         border-color: var(--primary-blue);
         color: var(--primary-blue);
+    }
+
+    .icon-btn.active {
+        border-color: var(--primary-blue);
+        color: var(--primary-blue);
+        background-color: #eef2ff;
     }
 
     .subtitle {
         font-size: 0.85rem;
         font-weight: 500;
         color: var(--text-gray);
+        text-align: center;
+        margin-top: 0.25rem;
+        width: 100%;
     }
 
     @media (max-width: 480px) {
+        .header-left {
+            gap: 0.75rem;
+        }
+
         .user-email {
             display: none;
+        }
+
+        h1 {
+            font-size: 1.1rem;
         }
     }
 </style>
