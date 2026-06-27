@@ -1,62 +1,65 @@
 ---
-import { STUDY_BATCH_SIZE } from "../config";
-import { getVocabDb } from "../lib/vocab-db";
+import { getVocabDb, getEffectiveNewWordCap, addLearnMoreBonus, getWordsPerRound } from "../lib/vocab-db";
+import { GRADES, gradeWord, todayLocal, type WordState } from "../lib/sm2";
 import Layout from "../layouts/Layout.astro";
-import IconMemorized from "../components/IconMemorized.astro";
-import IconFuzzy from "../components/IconFuzzy.astro";
-import IconUnknown from "../components/IconUnknown.astro";
 
-const db = getVocabDb(Astro.locals.dbPath!);
-const mode = Astro.url.searchParams.get("mode");
-const sessionTable = mode === "review" ? "ReviewSession" : "Session";
+const db = await getVocabDb(Astro.locals.dbPath!);
+const today = todayLocal();
 
 if (Astro.request.method === "POST") {
     try {
         const formData = await Astro.request.formData();
-        const ratingsJson = formData.get("ratings") as string;
+        const action = formData.get("action");
 
+        if (action === "another_round") {
+            // Deliberately raise today's new-word cap by one round (today only).
+            const roundSize = await getWordsPerRound(db);
+            await addLearnMoreBonus(db, today, roundSize);
+            return Astro.redirect("/study");
+        }
+
+        const ratingsJson = formData.get("ratings") as string | null;
         if (ratingsJson) {
-            const ratings: { id: number; rating: string }[] = JSON.parse(ratingsJson);
+            const ratings: { id: number; q: number }[] = JSON.parse(ratingsJson);
             const submittedIds = ratings.map((r) => r.id);
 
             if (submittedIds.length > 0) {
-                // Fetch all words being updated at once
                 const placeholders = submittedIds.map(() => "?").join(",");
                 const wordsResult = await db.execute({
-                    sql: `SELECT * FROM "Word" WHERE id IN (${placeholders})`,
+                    sql: `SELECT id, ease, interval, reps, due, seen, first_seen_date FROM "Word" WHERE id IN (${placeholders})`,
                     args: submittedIds,
                 });
                 const wordsMap = new Map(wordsResult.rows.map((w) => [Number(w.id), w]));
 
-                // Build an update statement for each rated word
                 const updateStatements = [];
-                for (const { id, rating } of ratings) {
-                    const currentWord = wordsMap.get(id);
+                for (const { id, q } of ratings) {
+                    const row = wordsMap.get(id);
+                    if (!row) continue;
+                    const grade = Math.round(Number(q));
+                    if (!Number.isFinite(grade) || grade < 0 || grade > 5) continue;
 
-                    if (currentWord) {
-                        let newUnknown = Number(currentWord.unknown_count);
-                        let newFuzzy = Number(currentWord.fuzzy_count);
-                        let newMemorized = Number(currentWord.memorized_count);
+                    const state: WordState = {
+                        ease: Number(row.ease),
+                        interval: Number(row.interval),
+                        reps: Number(row.reps),
+                        due: (row.due as string | null) ?? null,
+                        seen: Number(row.seen) === 1,
+                        first_seen_date: (row.first_seen_date as string | null) ?? null,
+                    };
+                    const next = gradeWord(state, grade, today);
 
-                        if (rating === "memorized") newMemorized++;
-                        else if (rating === "fuzzy") newFuzzy++;
-                        else if (rating === "unknown") newUnknown++;
-
-                        const newWeight = Math.max(1, 10 + newUnknown * 50 + newFuzzy * 20 - newMemorized * 30);
-
-                        updateStatements.push({
-                            sql: `UPDATE "Word" SET total_views = ?, unknown_count = ?, fuzzy_count = ?, memorized_count = ?, selection_weight = ?, last_rating = ? WHERE id = ?`,
-                            args: [
-                                Number(currentWord.total_views) + 1,
-                                newUnknown,
-                                newFuzzy,
-                                newMemorized,
-                                newWeight,
-                                rating,
-                                id,
-                            ],
-                        });
-                    }
+                    updateStatements.push({
+                        sql: `UPDATE "Word" SET ease = ?, interval = ?, reps = ?, due = ?, seen = ?, first_seen_date = ? WHERE id = ?`,
+                        args: [
+                            next.ease,
+                            next.interval,
+                            next.reps,
+                            next.due,
+                            next.seen ? 1 : 0,
+                            next.first_seen_date,
+                            id,
+                        ],
+                    });
                 }
 
                 if (updateStatements.length > 0) {
@@ -64,158 +67,95 @@ if (Astro.request.method === "POST") {
                 }
             }
 
-            // Clear session on successful submission
-            await db.execute(`DELETE FROM "${sessionTable}"`);
-
-            return Astro.redirect(mode === "review" ? "/status?mode=review" : "/status");
+            return Astro.redirect("/study");
         }
     } catch (error) {
         console.error("Error processing submission:", error);
     }
 }
 
-// Fetch existing session words
-const sessionResult = await db.execute(`SELECT word_id, "order" FROM "${sessionTable}"`);
-const sessionWords = sessionResult.rows.map((r) => ({ word_id: Number(r.word_id), order: Number(r.order) }));
-const selectedIds = new Set<number>(sessionWords.map((s) => s.word_id));
+// --- Build the session queue fresh (filter + sort, not a stored list) -------
 
-// Determine if we need to pick more
-if (selectedIds.size < STUDY_BATCH_SIZE) {
-    const newlySelectedIds = new Set<number>();
+const roundSize = await getWordsPerRound(db);
+const cap = await getEffectiveNewWordCap(db, today);
 
-    // Fetch weights, excluding already selected
-    let weightsSql = `SELECT id, selection_weight FROM "Word"`;
-    const weightsArgs: number[] = [];
-    const whereClauses: string[] = [];
-
-    if (selectedIds.size > 0) {
-        const placeholders = Array.from(selectedIds)
-            .map(() => "?")
-            .join(",");
-        whereClauses.push(`id NOT IN (${placeholders})`);
-        weightsArgs.push(...Array.from(selectedIds));
-    }
-
-    if (mode === "review") {
-        whereClauses.push(`last_rating IS NOT NULL`);
-    }
-
-    if (whereClauses.length > 0) {
-        weightsSql += ` WHERE ` + whereClauses.join(" AND ");
-    }
-
-    const weightsResult = await db.execute({ sql: weightsSql, args: weightsArgs });
-    const allWordsWeights = weightsResult.rows.map((r) => ({
-        id: Number(r.id),
-        selection_weight: Number(r.selection_weight),
-    }));
-
-    if (allWordsWeights.length > 0) {
-        // 1. Build cumulative weights array once
-        const cumulativeWeights: number[] = [];
-        let currentTotal = 0;
-        for (const word of allWordsWeights) {
-            currentTotal += word.selection_weight;
-            cumulativeWeights.push(currentTotal);
-        }
-        const totalWeight = currentTotal;
-
-        // 2. Select remaining required word IDs
-        const neededCount = Math.min(STUDY_BATCH_SIZE - selectedIds.size, allWordsWeights.length);
-        let newlySelectedCount = 0;
-
-        while (newlySelectedCount < neededCount && totalWeight > 0) {
-            // Random value between 0 and totalWeight
-            const r = Math.random() * totalWeight;
-
-            // Binary search for the index
-            let low = 0;
-            let high = cumulativeWeights.length - 1;
-            while (low < high) {
-                const mid = Math.floor((low + high) / 2);
-                if (cumulativeWeights[mid] <= r) {
-                    low = mid + 1;
-                } else {
-                    high = mid;
-                }
-            }
-
-            const id = allWordsWeights[low].id;
-            if (!newlySelectedIds.has(id)) {
-                newlySelectedIds.add(id);
-                newlySelectedCount++;
-            }
-        }
-
-        // Insert newly selected IDs into the session table
-        if (newlySelectedIds.size > 0) {
-            const maxOrder = sessionWords.reduce((max, s) => Math.max(max, s.order), -1);
-            let nextOrder = maxOrder + 1;
-            const insertData = Array.from(newlySelectedIds).map((id) => ({
-                word_id: id,
-                order: nextOrder++,
-            }));
-            const valuePlaceholders = insertData.map(() => "(?, ?)").join(",");
-            const insertArgs: number[] = [];
-            for (const item of insertData) {
-                insertArgs.push(item.word_id, item.order);
-            }
-            await db.execute({
-                sql: `INSERT INTO "${sessionTable}" (word_id, "order") VALUES ${valuePlaceholders} ON CONFLICT DO NOTHING`,
-                args: insertArgs,
-            });
-
-            // Merge newly selected IDs into selectedIds
-            newlySelectedIds.forEach((id) => selectedIds.add(id));
-
-            // Append to sessionWords to ensure orderMap is correct later
-            insertData.forEach((item) => sessionWords.push(item));
-        }
-    }
-}
-
-// Fetch the full data for the selected words
-let words: { id: number; word: string; definition: string; example: string }[] = [];
-if (selectedIds.size > 0) {
-    const placeholders = Array.from(selectedIds)
-        .map(() => "?")
-        .join(",");
-    const wordsResult = await db.execute({
-        sql: `SELECT id, word, definition, example FROM "Word" WHERE id IN (${placeholders})`,
-        args: Array.from(selectedIds),
-    });
-    words = wordsResult.rows.map((r) => ({
-        id: Number(r.id),
-        word: r.word as string,
-        definition: r.definition as string,
-        example: r.example as string,
-    }));
-}
-
-// Create an order map from the session data
-const orderMap = new Map(sessionWords.map((s) => [s.word_id, s.order]));
-
-// Sort the fetched words by their original session order
-words.sort((a, b) => {
-    const orderA = orderMap.get(a.id) ?? 0;
-    const orderB = orderMap.get(b.id) ?? 0;
-    return orderA - orderB;
+const introducedResult = await db.execute({
+    sql: `SELECT COUNT(*) AS n FROM "Word" WHERE first_seen_date = ?`,
+    args: [today],
 });
+const introducedToday = Number(introducedResult.rows[0].n);
+
+// 1-3. Due/review cards: already-seen words past their due date, most overdue first.
+const dueResult = await db.execute({
+    sql: `SELECT id, word, definition, example FROM "Word"
+          WHERE seen = 1 AND due IS NOT NULL AND due <= ?
+          ORDER BY due ASC, id ASC
+          LIMIT ?`,
+    args: [today, roundSize],
+});
+const dueWords = dueResult.rows;
+
+// 4-5. Top up with never-seen words, never exceeding today's remaining cap.
+const newAllowance = Math.max(0, cap - introducedToday);
+const needNew = Math.max(0, roundSize - dueWords.length);
+const takeNew = Math.min(needNew, newAllowance);
+
+let newWords: typeof dueWords = [];
+if (takeNew > 0) {
+    const newResult = await db.execute({
+        sql: `SELECT id, word, definition, example FROM "Word"
+              WHERE seen = 0
+              ORDER BY shuffle_order ASC, id ASC
+              LIMIT ?`,
+        args: [takeNew],
+    });
+    newWords = newResult.rows;
+}
+
+const words = [...dueWords, ...newWords].map((r) => ({
+    id: Number(r.id),
+    word: r.word as string,
+    definition: r.definition as string,
+    example: r.example as string,
+}));
+
+// Determine why the queue is empty so we can offer "Learn 10 more" only when
+// the cap (not an exhausted deck) is what stopped us.
+let unseenRemaining = 0;
+if (words.length === 0) {
+    const unseenResult = await db.execute(`SELECT COUNT(*) AS n FROM "Word" WHERE seen = 0`);
+    unseenRemaining = Number(unseenResult.rows[0].n);
+}
+const stoppedByCap = words.length === 0 && dueWords.length === 0 && newAllowance === 0 && unseenRemaining > 0;
+
+// Footer buttons run worst-to-best (0..5); the modal lists them best-first.
+const footerGrades = [...GRADES].reverse();
 ---
 
-<Layout title="Study - SAT Vocab" headerSubtitle="Tap any card to view details" user={Astro.locals.user}>
+<Layout title="Study - SAT Vocab" user={Astro.locals.user}>
     <main>
         {
-            words.length === 0 && mode === "review" ? (
-                <div class="empty-state">
-                    <h2>No Words to Review</h2>
-                    <p>
-                        You haven't studied any words yet (or you've reviewed them all in this session). Start learning
-                        new words first!
-                    </p>
-                    <a href="/" class="submit-btn empty-state-btn">
-                        Go to Home
-                    </a>
+            words.length === 0 ? (
+                <div class="done-state">
+                    <div class="done-emoji">🎉</div>
+                    <h2>You're all caught up</h2>
+                    {stoppedByCap ? (
+                        <Fragment>
+                            <p>
+                                You've hit today's new-word limit ({introducedToday} introduced). Come back tomorrow for
+                                your reviews, or push ahead now.
+                            </p>
+                            <form method="POST">
+                                <input type="hidden" name="action" value="another_round" />
+                                <button class="submit-btn" type="submit">
+                                    Do another round
+                                </button>
+                                <p class="done-note">This adds to tomorrow's review load.</p>
+                            </form>
+                        </Fragment>
+                    ) : (
+                        <p>No words are due right now. Come back tomorrow to keep your memory fresh.</p>
+                    )}
                 </div>
             ) : (
                 <Fragment>
@@ -230,12 +170,15 @@ words.sort((a, b) => {
                             >
                                 <div class="word-content">{word.word}</div>
                                 <div class="card-footer">
-                                    {/* prettier-ignore */}
-                                    <button class="rating-option" title="Memorized" data-rating="memorized"><IconMemorized /></button>
-                                    {/* prettier-ignore */}
-                                    <button class="rating-option" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
-                                    {/* prettier-ignore */}
-                                    <button class="rating-option" title="Unknown" data-rating="unknown"><IconUnknown /></button>
+                                    {footerGrades.map((g) => (
+                                        <button
+                                            class={`grade-btn ${g.pass ? "pass" : "fail"}`}
+                                            title={`${g.label} — ${g.description}`}
+                                            data-q={g.q}
+                                        >
+                                            {g.q}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         ))}
@@ -258,27 +201,38 @@ words.sort((a, b) => {
 
     <!-- Word Detail Modal -->
     <div class="modal-overlay" id="modal-overlay">
-        <div class="modal-content">
+        <div class="modal-content modal-content-detail">
             <button class="close-btn" id="close-btn" aria-label="Close">&times;</button>
             <h2 class="modal-title" id="modal-title">Word</h2>
 
-            <div class="modal-section">
-                <span class="modal-label">Definition:</span>
-                <p class="modal-text" id="modal-definition"></p>
-            </div>
+            <div class="modal-body">
+                <div class="modal-info">
+                    <div class="modal-section">
+                        <span class="modal-label">Definition:</span>
+                        <p class="modal-text" id="modal-definition"></p>
+                    </div>
 
-            <div class="modal-section">
-                <span class="modal-label">Example:</span>
-                <p class="modal-text example-text" id="modal-example"></p>
-            </div>
+                    <div class="modal-section">
+                        <span class="modal-label">Example:</span>
+                        <p class="modal-text example-text" id="modal-example"></p>
+                    </div>
+                </div>
 
-            <div class="modal-footer">
-                <p class="modal-footer-text">How well do you know this word?</p>
-                <div class="modal-rating-container">
-                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized"><IconMemorized /></button
-                    >
-                    <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
-                    <button class="modal-rating-btn" title="Unknown" data-rating="unknown"><IconUnknown /></button>
+                <div class="modal-grades">
+                    <p class="modal-footer-text">How well did you recall it?</p>
+                    <div class="grade-list" id="modal-grade-list">
+                        {
+                            GRADES.map((g) => (
+                                <button class={`grade-row ${g.pass ? "pass" : "fail"}`} data-q={g.q}>
+                                    <span class="grade-num">{g.q}</span>
+                                    <span class="grade-text">
+                                        <span class="grade-label">{g.label}</span>
+                                        <span class="grade-desc">{g.description}</span>
+                                    </span>
+                                </button>
+                            ))
+                        }
+                    </div>
                 </div>
             </div>
         </div>
@@ -287,22 +241,29 @@ words.sort((a, b) => {
     <!-- Warning Modal -->
     <div class="modal-overlay" id="warning-modal-overlay">
         <div class="modal-content">
-            <h2 class="modal-title">Unrated Cards</h2>
+            <h2 class="modal-title">Ungraded Cards</h2>
 
             <div class="modal-section">
                 <p class="modal-text">
-                    You have <strong id="unrated-count">0</strong> cards that are not rated yet. Do you want to mark them
-                    all with the same rating?
+                    You have <strong id="unrated-count">0</strong> cards that aren't graded yet. Do you want to mark them
+                    all with the same grade?
                 </p>
             </div>
 
             <div class="modal-section">
-                <span class="modal-label">Select a rating:</span>
-                <div class="modal-rating-container" id="warning-rating-container">
-                    <button class="modal-rating-btn" title="Memorized" data-rating="memorized"><IconMemorized /></button
-                    >
-                    <button class="modal-rating-btn" title="Fuzzy" data-rating="fuzzy"><IconFuzzy /></button>
-                    <button class="modal-rating-btn" title="Unknown" data-rating="unknown"><IconUnknown /></button>
+                <span class="modal-label">Select a grade:</span>
+                <div class="grade-list" id="warning-grade-list">
+                    {
+                        GRADES.map((g) => (
+                            <button class={`grade-row ${g.pass ? "pass" : "fail"}`} data-q={g.q}>
+                                <span class="grade-num">{g.q}</span>
+                                <span class="grade-text">
+                                    <span class="grade-label">{g.label}</span>
+                                    <span class="grade-desc">{g.description}</span>
+                                </span>
+                            </button>
+                        ))
+                    }
                 </div>
             </div>
 
@@ -314,82 +275,100 @@ words.sort((a, b) => {
     </div>
 </Layout>
 
+<style is:global>
+    /* The study session is sized to fit the viewport — never let the page scroll. */
+    html,
+    body {
+        height: 100%;
+        overflow: hidden;
+    }
+</style>
+
 <style>
     main {
         flex: 1;
-        padding: 1.5rem 1rem;
-        max-width: 500px;
-        margin: 0 auto;
+        min-height: 0;
+        padding: 1rem;
         width: 100%;
+        display: flex;
+        flex-direction: column;
     }
 
-    .empty-state {
+    .done-state {
         text-align: center;
         padding: 3rem 1rem;
+        margin: auto;
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 1.5rem;
+        gap: 1rem;
     }
 
-    .empty-state h2 {
+    .done-emoji {
+        font-size: 3rem;
+        line-height: 1;
+    }
+
+    .done-state h2 {
         font-size: 1.5rem;
         color: var(--text-dark);
         margin: 0;
     }
 
-    .empty-state p {
+    .done-state p {
         color: var(--text-gray);
         line-height: 1.5;
         margin: 0;
+        max-width: 320px;
     }
 
-    .empty-state-btn {
-        display: inline-block;
-        text-decoration: none;
-        width: auto;
+    .done-state form {
+        width: 100%;
+        max-width: 320px;
+        margin-top: 0.5rem;
     }
 
-    .success-banner {
-        background-color: #ecfdf5;
-        border: 1px solid #10b981;
-        border-radius: 12px;
-        padding: 0.75rem 1.25rem;
-        margin-bottom: 1.5rem;
+    .done-note {
+        font-size: 0.85rem;
+        margin-top: 0.6rem !important;
+    }
+
+    .session-meta {
         display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        color: #065f46;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    .session-meta span {
+        background-color: var(--bg-light);
+        color: var(--text-gray);
+        font-size: 0.8rem;
         font-weight: 600;
-        font-size: 0.95rem;
-        animation: slideDown 0.3s ease-out;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
     }
 
-    @keyframes slideDown {
-        from {
-            transform: translateY(-15px);
-            opacity: 0;
-        }
-        to {
-            transform: translateY(0);
-            opacity: 1;
-        }
-    }
-
+    /* Columns/rows are computed by JS to spread the cards across the whole
+       viewport for whatever round size the user picked (see the layout script). */
     .word-grid {
+        flex: 1;
+        min-height: 0;
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1.25rem;
+        grid-template-columns: repeat(var(--cols, 2), 1fr);
+        grid-template-rows: repeat(var(--rows, 1), 1fr);
+        gap: 0.75rem;
     }
 
     .word-card {
         background-color: var(--card-bg);
-        border-radius: 16px;
+        border-radius: 14px;
         display: flex;
         flex-direction: column;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         overflow: hidden;
-        min-height: 160px;
+        min-height: 0;
         cursor: pointer;
         transition: box-shadow 0.2s ease;
         -webkit-tap-highlight-color: transparent;
@@ -399,13 +378,33 @@ words.sort((a, b) => {
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     }
 
+    /* Faint tint reflecting the selected grade (green = pass, red = fail). */
+    .word-card.graded-pass {
+        background-color: #ecfdf5;
+    }
+
+    .word-card.graded-fail {
+        background-color: #fef2f2;
+    }
+
+    .word-card.graded-pass .card-footer {
+        background-color: #ecfdf5;
+        border-top-color: #c2f7dc
+    }
+
+    .word-card.graded-fail .card-footer {
+        background-color: #fef2f2;
+        border-top-color: #f9d0d0;
+    }
+
     .word-content {
         flex: 1;
+        min-height: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 2rem 1rem;
-        font-size: 1.35rem;
+        padding: 0.5rem 0.75rem;
+        font-size: clamp(1.25rem, 5vh, 1.5rem);
         font-weight: 600;
         color: var(--text-dark);
         text-align: center;
@@ -414,37 +413,47 @@ words.sort((a, b) => {
     .card-footer {
         border-top: 1.5px solid var(--border-color);
         display: flex;
-        justify-content: space-around;
+        justify-content: space-between;
         align-items: center;
-        padding: 0.2rem 0.5rem;
+        padding: 0.4rem 0.4rem;
         background-color: #ffffff;
         flex-shrink: 0;
+        gap: 0.15rem;
     }
-    .rating-option {
+
+    .grade-btn {
+        flex: 1;
         background: none;
-        border: none;
+        border: 1.5px solid transparent;
         cursor: pointer;
-        padding: 0.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        padding: 0.3rem 0;
+        font-size: 0.9rem;
+        font-weight: 700;
+        border-radius: 8px;
         transition: all 0.15s ease;
-        line-height: 1;
         -webkit-tap-highlight-color: transparent;
-        border-radius: 10px;
     }
 
-    .rating-option:hover {
-        background-color: var(--bg-light);
+    .grade-btn.pass {
+        color: #047857;
     }
 
-    .rating-option:active {
+    .grade-btn.fail {
+        color: #b91c1c;
+    }
+
+    .grade-btn:active {
         transform: scale(0.9);
     }
 
-    .rating-option.selected {
-        background-color: var(--bg-light);
-        box-shadow: inset 0 0 0 1.5px var(--primary-blue);
+    .grade-btn.pass.selected {
+        background-color: #ecfdf5;
+        border-color: #10b981;
+    }
+
+    .grade-btn.fail.selected {
+        background-color: #fef2f2;
+        border-color: #ef4444;
     }
 
     .submit-btn {
@@ -452,9 +461,9 @@ words.sort((a, b) => {
         background-color: var(--primary-blue);
         color: white;
         border: none;
-        padding: 1.1rem 2rem;
+        padding: 0.85rem 2rem;
         border-radius: 12px;
-        font-size: 1.15rem;
+        font-size: 1.1rem;
         font-weight: 600;
         cursor: pointer;
         box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
@@ -469,7 +478,8 @@ words.sort((a, b) => {
     }
 
     .submit-container {
-        margin-top: 1.5rem;
+        margin-top: 0.75rem;
+        flex-shrink: 0;
     }
 
     /* Modal Styles */
@@ -507,6 +517,73 @@ words.sort((a, b) => {
         box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
         transform: scale(0.9);
         transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    /* The detail modal lays definition/example (left) beside the grade list
+       (right) so it fits the viewport without scrolling. */
+    .modal-content-detail {
+        max-width: 760px;
+        max-height: 90vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-body {
+        display: flex;
+        gap: 2rem;
+        min-height: 0;
+        align-items: stretch;
+    }
+
+    .modal-info {
+        flex: 1 1 0;
+        min-width: 0;
+        overflow-y: auto;
+    }
+
+    .modal-grades {
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .modal-grades .grade-list {
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .modal-info .modal-section:last-child {
+        margin-bottom: 0;
+    }
+
+    @media (max-width: 640px) {
+        .modal-content-detail {
+            max-width: 400px;
+            /* Fall back to scrolling the whole modal if the stacked content is
+               taller than the viewport, so the definition is never hidden. */
+            overflow-y: auto;
+        }
+
+        .modal-body {
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        /* Each part takes its natural height; nothing collapses to zero. */
+        .modal-info,
+        .modal-grades {
+            flex: 0 0 auto;
+        }
+
+        .modal-info,
+        .modal-grades .grade-list {
+            overflow: visible;
+        }
     }
 
     .modal-overlay.active .modal-content {
@@ -563,53 +640,96 @@ words.sort((a, b) => {
         margin-top: 1.5rem;
         padding-top: 1rem;
         border-top: 1.5px solid var(--border-color);
-        text-align: center;
     }
 
     .modal-footer-text {
         font-size: 0.95rem;
         font-weight: 600;
         color: var(--text-dark);
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
+        text-align: center;
     }
 
-    .modal-rating-container {
+    .modal-grades .modal-footer-text {
+        text-align: left;
+        flex-shrink: 0;
+    }
+
+    .grade-list {
         display: flex;
-        justify-content: center;
-        gap: 1.5rem;
+        flex-direction: column;
+        gap: 0.5rem;
     }
 
-    .modal-rating-btn {
+    .grade-row {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        width: 100%;
+        text-align: left;
         background-color: #ffffff;
         border: 1.5px solid var(--border-color);
         border-radius: 12px;
-        padding: 0.75rem 1rem;
+        padding: 0.6rem 0.85rem;
         cursor: pointer;
-        transition: all 0.2s ease;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        transition: all 0.15s ease;
+    }
+
+    .grade-row:active {
+        transform: scale(0.99);
+    }
+
+    .grade-num {
+        flex-shrink: 0;
+        width: 2rem;
+        height: 2rem;
         display: flex;
         align-items: center;
         justify-content: center;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1.05rem;
+        color: #ffffff;
     }
 
-    .modal-rating-btn:hover {
+    .grade-row.pass .grade-num {
+        background-color: #10b981;
+    }
+
+    .grade-row.fail .grade-num {
+        background-color: #ef4444;
+    }
+
+    .grade-text {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.25;
+    }
+
+    .grade-label {
+        font-weight: 700;
+        color: var(--text-dark);
+        font-size: 0.95rem;
+    }
+
+    .grade-desc {
+        font-size: 0.8rem;
+        color: var(--text-gray);
+    }
+
+    .grade-row.pass:hover {
+        border-color: #10b981;
+        background-color: #ecfdf5;
+    }
+
+    .grade-row.fail:hover {
+        border-color: #ef4444;
+        background-color: #fef2f2;
+    }
+
+    .grade-row.selected {
+        box-shadow: 0 0 0 1.5px var(--primary-blue);
         border-color: var(--primary-blue);
-        transform: translateY(-2px);
-    }
-
-    .modal-rating-btn:active {
-        transform: scale(0.95);
-    }
-
-    .rating-option.selected {
-        background-color: var(--bg-light);
-        box-shadow: inset 0 0 0 1.5px var(--primary-blue);
-    }
-
-    .modal-rating-btn.selected {
-        background-color: var(--bg-light);
-        border-color: var(--primary-blue);
-        box-shadow: 0 0 0 1px var(--primary-blue);
     }
 
     .word-card.unrated-error {
@@ -648,14 +768,6 @@ words.sort((a, b) => {
         background-color: #d1d5db;
         cursor: not-allowed;
     }
-
-    /* Icon Sizing */
-    :global(.rating-icon) {
-        width: 32px;
-        height: 32px;
-        display: block;
-        pointer-events: none;
-    }
 </style>
 
 <script>
@@ -663,15 +775,54 @@ words.sort((a, b) => {
     const closeBtn = document.getElementById("close-btn");
     const wordCards = document.querySelectorAll(".word-card") as NodeListOf<HTMLElement>;
 
+    // --- Fill the screen: pick the column/row split whose cells come closest to
+    // a pleasant card shape for the current card count and grid size. ---------
+    const wordGrid = document.querySelector(".word-grid") as HTMLElement | null;
+
+    function layoutGrid() {
+        if (!wordGrid) return;
+        const n = wordCards.length;
+        if (n === 0) return;
+
+        const width = wordGrid.clientWidth;
+        const height = wordGrid.clientHeight;
+        if (width === 0 || height === 0) return;
+
+        const TARGET_RATIO = 1.4; // desired card width / height
+        let bestCols = 1;
+        let bestScore = Infinity;
+        for (let cols = 1; cols <= n; cols++) {
+            const rows = Math.ceil(n / cols);
+            const cellWidth = width / cols;
+            const cellHeight = height / rows;
+            // Closeness to the target shape, plus a small penalty for empty cells
+            // left over in the last row so we don't waste space.
+            const ratioScore = Math.abs(Math.log(cellWidth / cellHeight / TARGET_RATIO));
+            const emptyPenalty = (cols * rows - n) * 0.05;
+            const score = ratioScore + emptyPenalty;
+            if (score < bestScore) {
+                bestScore = score;
+                bestCols = cols;
+            }
+        }
+
+        const bestRows = Math.ceil(n / bestCols);
+        wordGrid.style.setProperty("--cols", String(bestCols));
+        wordGrid.style.setProperty("--rows", String(bestRows));
+    }
+
+    layoutGrid();
+    window.addEventListener("resize", layoutGrid);
+
     const modalTitle = document.getElementById("modal-title");
     const modalDefinition = document.getElementById("modal-definition");
     const modalExample = document.getElementById("modal-example");
-    const modalRatingBtns = document.querySelectorAll(".modal-rating-btn");
+    const modalGradeBtns = document.querySelectorAll("#modal-grade-list .grade-row");
 
     // Warning Modal Elements
     const warningModalOverlay = document.getElementById("warning-modal-overlay");
     const unratedCountSpan = document.getElementById("unrated-count");
-    const warningRatingBtns = document.querySelectorAll("#warning-rating-container .modal-rating-btn");
+    const warningGradeBtns = document.querySelectorAll("#warning-grade-list .grade-row");
     const warningCancelBtn = document.getElementById("warning-cancel-btn");
     const warningConfirmBtn = document.getElementById("warning-confirm-btn") as HTMLButtonElement | null;
     const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement | null;
@@ -680,17 +831,18 @@ words.sort((a, b) => {
     const ratingsInput = document.getElementById("ratings-input") as HTMLInputElement | null;
 
     let activeCard: HTMLElement | null = null;
-    let warningSelectedRating: string | null = null;
+    let warningSelectedGrade: string | null = null;
 
-    function updateCardRating(card: HTMLElement, rating: string) {
-        const options = card.querySelectorAll(".rating-option");
+    function updateCardGrade(card: HTMLElement, q: string) {
+        card.setAttribute("data-grade", q);
+        const options = card.querySelectorAll(".grade-btn");
         options.forEach((opt) => {
-            if (opt.getAttribute("data-rating") === rating) {
-                opt.classList.add("selected");
-            } else {
-                opt.classList.remove("selected");
-            }
+            opt.classList.toggle("selected", opt.getAttribute("data-q") === q);
         });
+        // Tint the card to reflect the grade: 3-5 are passes (green), 0-2 fails (red).
+        const pass = parseInt(q, 10) >= 3;
+        card.classList.toggle("graded-pass", pass);
+        card.classList.toggle("graded-fail", !pass);
         card.classList.remove("unrated-error");
     }
 
@@ -704,14 +856,10 @@ words.sort((a, b) => {
         if (modalDefinition) modalDefinition.textContent = definition;
         if (modalExample) modalExample.textContent = example;
 
-        // Sync modal rating buttons with card selection
-        const selectedCardRating = card.querySelector(".rating-option.selected")?.getAttribute("data-rating");
-        modalRatingBtns.forEach((btn) => {
-            if (btn.getAttribute("data-rating") === selectedCardRating) {
-                btn.classList.add("selected");
-            } else {
-                btn.classList.remove("selected");
-            }
+        // Sync modal grade buttons with the card's current selection.
+        const selected = card.getAttribute("data-grade");
+        modalGradeBtns.forEach((btn) => {
+            btn.classList.toggle("selected", btn.getAttribute("data-q") === selected);
         });
 
         modalOverlay?.classList.add("active");
@@ -727,10 +875,10 @@ words.sort((a, b) => {
     wordCards.forEach((card) => {
         card.addEventListener("click", (e) => {
             const target = e.target as HTMLElement;
-            const ratingBtn = target.closest(".rating-option");
-            if (ratingBtn) {
-                const rating = ratingBtn.getAttribute("data-rating");
-                if (rating) updateCardRating(card, rating);
+            const gradeBtn = target.closest(".grade-btn");
+            if (gradeBtn) {
+                const q = gradeBtn.getAttribute("data-q");
+                if (q !== null) updateCardGrade(card, q);
                 return;
             }
             openModal(card);
@@ -740,42 +888,34 @@ words.sort((a, b) => {
     closeBtn?.addEventListener("click", closeModal);
 
     modalOverlay?.addEventListener("click", (e) => {
-        if (e.target === modalOverlay) {
-            closeModal();
-        }
+        if (e.target === modalOverlay) closeModal();
     });
 
-    modalRatingBtns.forEach((btn) => {
+    modalGradeBtns.forEach((btn) => {
         btn.addEventListener("click", () => {
-            const rating = btn.getAttribute("data-rating");
-            if (activeCard && rating) {
-                updateCardRating(activeCard, rating);
-            }
+            const q = btn.getAttribute("data-q");
+            if (activeCard && q !== null) updateCardGrade(activeCard, q);
             closeModal();
         });
     });
 
     // Validation and Warning Modal Logic
     submitBtn?.addEventListener("click", () => {
-        const unratedCards = Array.from(wordCards).filter((card) => {
-            return !card.querySelector(".rating-option.selected");
-        });
+        const ungraded = Array.from(wordCards).filter((card) => !card.hasAttribute("data-grade"));
 
-        if (unratedCards.length > 0) {
-            unratedCards.forEach((card) => card.classList.add("unrated-error"));
-            if (unratedCountSpan) unratedCountSpan.textContent = unratedCards.length.toString();
+        if (ungraded.length > 0) {
+            ungraded.forEach((card) => card.classList.add("unrated-error"));
+            if (unratedCountSpan) unratedCountSpan.textContent = ungraded.length.toString();
             warningModalOverlay?.classList.add("active");
             document.body.style.overflow = "hidden";
-            // Reset warning modal state
-            warningSelectedRating = null;
-            warningRatingBtns.forEach((btn) => btn.classList.remove("selected"));
+            warningSelectedGrade = null;
+            warningGradeBtns.forEach((btn) => btn.classList.remove("selected"));
             if (warningConfirmBtn) warningConfirmBtn.disabled = true;
         } else {
-            // All cards are rated, proceed with submission
             const ratings = Array.from(wordCards).map((card) => {
                 const id = card.getAttribute("data-id") || "0";
-                const rating = card.querySelector(".rating-option.selected")?.getAttribute("data-rating") || "unknown";
-                return { id: parseInt(id), rating };
+                const q = card.getAttribute("data-grade") || "0";
+                return { id: parseInt(id), q: parseInt(q) };
             });
 
             if (submitBtn) {
@@ -790,10 +930,10 @@ words.sort((a, b) => {
         }
     });
 
-    warningRatingBtns.forEach((btn) => {
+    warningGradeBtns.forEach((btn) => {
         btn.addEventListener("click", () => {
-            warningSelectedRating = btn.getAttribute("data-rating");
-            warningRatingBtns.forEach((b) => b.classList.toggle("selected", b === btn));
+            warningSelectedGrade = btn.getAttribute("data-q");
+            warningGradeBtns.forEach((b) => b.classList.toggle("selected", b === btn));
             if (warningConfirmBtn) warningConfirmBtn.disabled = false;
         });
     });
@@ -804,14 +944,11 @@ words.sort((a, b) => {
     });
 
     warningConfirmBtn?.addEventListener("click", () => {
-        if (warningSelectedRating) {
-            const unratedCards = Array.from(wordCards).filter((card) => {
-                return !card.querySelector(".rating-option.selected");
-            });
-            unratedCards.forEach((card) => updateCardRating(card, warningSelectedRating!));
+        if (warningSelectedGrade !== null) {
+            const ungraded = Array.from(wordCards).filter((card) => !card.hasAttribute("data-grade"));
+            ungraded.forEach((card) => updateCardGrade(card, warningSelectedGrade!));
             warningModalOverlay?.classList.remove("active");
             document.body.style.overflow = "";
-            // Auto-submit after marking all
             submitBtn?.click();
         }
     });

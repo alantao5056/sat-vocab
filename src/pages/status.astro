@@ -2,204 +2,351 @@
 import Layout from "../layouts/Layout.astro";
 import { getVocabDb } from "../lib/vocab-db";
 
-const mode = Astro.url.searchParams.get("mode");
+const db = await getVocabDb(Astro.locals.dbPath!);
 
-const db = getVocabDb(Astro.locals.dbPath!);
-const result = await db.execute(`SELECT last_rating FROM "Word"`);
-const allWords = result.rows;
+// Mature/"mastered" threshold in days (a common spaced-repetition convention).
+const MATURE_INTERVAL = 21;
 
-const totalWords = allWords.length;
-
-let memorized = 0;
-let fuzzy = 0;
-let unknown = 0;
-let unseen = 0;
-
-for (const word of allWords) {
-    if (word.last_rating === "memorized") memorized++;
-    else if (word.last_rating === "fuzzy") fuzzy++;
-    else if (word.last_rating === "unknown") unknown++;
-    else unseen++;
+// Pull the words for each board column. A word counts as "learning" until its
+// interval reaches the mature threshold, at which point it becomes "mastered".
+async function bucket(where: string, args: (string | number)[], order: string) {
+    const result = await db.execute({
+        sql: `SELECT word, definition, example, due, ease FROM "Word" WHERE ${where} ORDER BY ${order}`,
+        args,
+    });
+    return result.rows.map((r) => ({
+        word: r.word as string,
+        definition: r.definition as string,
+        example: r.example as string,
+        due: (r.due as string | null) ?? null,
+        ease: Number(r.ease),
+    }));
 }
 
-const progressPercentage = totalWords > 0 ? Math.round((memorized / totalWords) * 100) : 0;
+const mastered = await bucket(`seen = 1 AND interval >= ?`, [MATURE_INTERVAL], `due ASC, word ASC`);
+const learning = await bucket(`seen = 1 AND interval < ?`, [MATURE_INTERVAL], `due ASC, word ASC`);
+
+const columns = [
+    { key: "mastered", title: "Mastered", accent: "#10b981", words: mastered },
+    { key: "learning", title: "Learning", accent: "#4f46e5", words: learning },
+];
 ---
 
-<Layout title="Status - SAT Vocab" headerSubtitle="Your learning progress" user={Astro.locals.user}>
+<Layout title="Status - SAT Vocab" user={Astro.locals.user}>
     <main>
-        <div class="stats-card">
-            <h2>Overall Progress</h2>
-            <div class="progress-display">
-                <span class="progress-number">{progressPercentage}%</span>
-                <span class="progress-label">Memorized</span>
-            </div>
-
-            <div class="progress-bar-container">
-                <div class="progress-bar-fill" style={`width: ${progressPercentage}%`}></div>
-            </div>
-
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <span class="stat-value">{memorized}</span>
-                    <span class="stat-name">Memorized</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">{fuzzy}</span>
-                    <span class="stat-name">Fuzzy</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">{unknown}</span>
-                    <span class="stat-name">Unknown</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">{unseen}</span>
-                    <span class="stat-name">Unseen</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="action-container">
-            <a href={mode === "review" ? "/study?mode=review" : "/study"} class="continue-btn">
-                {mode === "review" ? "Continue Reviewing" : "Continue Studying"}
-            </a>
-            <a href="/" class="home-link">Back to Home</a>
+        <div class="board">
+            {
+                columns.map((col) => (
+                    <section class="column" style={`--accent: ${col.accent}`}>
+                        <div class="col-header">
+                            <span class="col-title">{col.title}</span>
+                            <span class="col-count">{col.words.length}</span>
+                        </div>
+                        <div class="col-list">
+                            {col.words.length === 0 ? (
+                                <p class="col-empty">No words</p>
+                            ) : (
+                                col.words.map((w) => (
+                                    <div
+                                        class="word-row"
+                                        data-word={w.word}
+                                        data-definition={w.definition}
+                                        data-example={w.example}
+                                    >
+                                        <span class="w-word">{w.word}</span>
+                                        <span class="w-due">{w.due ?? "—"}</span>
+                                        <span class="w-ease">{w.ease.toFixed(2)}</span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </section>
+                ))
+            }
         </div>
     </main>
+
+    <!-- Word Detail Modal (read-only: definition + example) -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" id="close-btn" aria-label="Close">&times;</button>
+            <h2 class="modal-title" id="modal-title">Word</h2>
+
+            <div class="modal-section">
+                <span class="modal-label">Definition:</span>
+                <p class="modal-text" id="modal-definition"></p>
+            </div>
+
+            <div class="modal-section">
+                <span class="modal-label">Example:</span>
+                <p class="modal-text example-text" id="modal-example"></p>
+            </div>
+        </div>
+    </div>
 </Layout>
+
+<style is:global>
+    /* The progress board is sized to fit the viewport — never let the page scroll. */
+    html,
+    body {
+        height: 100%;
+        overflow: hidden;
+    }
+</style>
 
 <style>
     main {
         flex: 1;
-        padding: 1.5rem 1rem;
-        max-width: 500px;
-        margin: 0 auto;
+        min-height: 0;
+        padding: 1rem;
         width: 100%;
+        margin: 0 auto;
         display: flex;
         flex-direction: column;
-        gap: 2rem;
     }
 
-    .stats-card {
-        background-color: var(--card-bg, #ffffff);
-        border-radius: 16px;
-        padding: 2rem;
+    .board {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+    }
+
+    /* On narrow screens stack the two boards: Mastered fills the top half,
+       Learning the bottom half. Each list scrolls within its own half so the
+       page itself never scrolls. */
+    @media (max-width: 640px) {
+        .board {
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr 1fr;
+        }
+    }
+
+    .column {
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background-color: var(--card-bg);
+        border-radius: 14px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+    }
+
+    .col-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.6rem 0.85rem;
+        border-top: 3px solid var(--accent);
+        border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
+    }
+
+    .col-title {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--text-dark);
+    }
+
+    .col-count {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #ffffff;
+        background-color: var(--accent);
+        border-radius: 9999px;
+        padding: 0.1rem 0.55rem;
+        min-width: 1.75rem;
         text-align: center;
     }
 
-    h2 {
-        font-size: 1.5rem;
-        color: var(--text-dark, #1f2937);
-        margin-bottom: 1.5rem;
+    .col-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 0.4rem 0.5rem;
     }
 
-    .progress-display {
+    .col-empty {
+        font-size: 0.8rem;
+        color: var(--text-light-gray);
+        text-align: center;
+        padding: 1rem 0;
+    }
+
+    .word-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        align-items: baseline;
+        gap: 0.5rem;
+        padding: 0.35rem 0.4rem;
+        border-radius: 6px;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .word-row:hover {
+        background-color: var(--border-color);
+    }
+
+    .word-row:nth-child(odd) {
+        background-color: var(--bg-light);
+    }
+
+    .w-word {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .w-due {
+        font-size: 0.7rem;
+        color: var(--text-gray);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .w-ease {
+        font-size: 0.7rem;
+        color: var(--text-light-gray);
+        font-variant-numeric: tabular-nums;
+        min-width: 2.2rem;
+        text-align: right;
+    }
+
+    /* Modal Styles (read-only word detail) */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
         display: flex;
-        flex-direction: column;
         align-items: center;
-        margin-bottom: 1.5rem;
+        justify-content: center;
+        z-index: 1000;
+        opacity: 0;
+        visibility: hidden;
+        transition:
+            opacity 0.3s ease,
+            visibility 0.3s ease;
+        backdrop-filter: blur(2px);
     }
 
-    .progress-number {
-        font-size: 3.5rem;
-        font-weight: 800;
-        color: var(--primary-blue, #4f46e5);
+    .modal-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .modal-content {
+        background-color: #ffffff;
+        width: 90%;
+        max-width: 400px;
+        border-radius: 20px;
+        padding: 2rem;
+        position: relative;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        transform: scale(0.9);
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-overlay.active .modal-content {
+        transform: scale(1);
+    }
+
+    .close-btn {
+        position: absolute;
+        top: 1.25rem;
+        right: 1.25rem;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.5rem;
+        color: var(--text-gray);
+        padding: 0.25rem;
         line-height: 1;
     }
 
-    .progress-label {
-        font-size: 1rem;
-        color: var(--text-gray, #6b7280);
-        margin-top: 0.25rem;
-    }
-
-    .progress-bar-container {
-        width: 100%;
-        height: 12px;
-        background-color: var(--bg-light, #f3f4f6);
-        border-radius: 9999px;
-        overflow: hidden;
-        margin-bottom: 2rem;
-    }
-
-    .progress-bar-fill {
-        height: 100%;
-        background-color: var(--primary-blue, #4f46e5);
-        border-radius: 9999px;
-        transition: width 1s ease-out;
-    }
-
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1rem;
-    }
-
-    .stat-item {
-        background-color: var(--bg-light, #f3f4f6);
-        padding: 1rem;
-        border-radius: 12px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .stat-value {
-        font-size: 1.5rem;
+    .modal-title {
+        font-size: 1.75rem;
         font-weight: 700;
-        color: var(--text-dark, #1f2937);
-    }
-
-    .stat-name {
-        font-size: 0.875rem;
-        color: var(--text-gray, #6b7280);
-        margin-top: 0.25rem;
-    }
-
-    .action-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .continue-btn {
-        width: 100%;
-        background-color: var(--primary-blue, #4f46e5);
-        color: white;
-        border: none;
-        padding: 1.1rem 2rem;
-        border-radius: 12px;
-        font-size: 1.15rem;
-        font-weight: 600;
-        cursor: pointer;
+        color: var(--text-dark);
         text-align: center;
-        text-decoration: none;
-        box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
-        transition:
-            transform 0.1s ease,
-            background-color 0.2s ease;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1.5px solid var(--border-color);
     }
 
-    .continue-btn:hover {
-        background-color: var(--primary-dark, #4338ca);
+    .modal-section {
+        margin-bottom: 1.25rem;
     }
 
-    .continue-btn:active {
-        transform: scale(0.99);
+    .modal-section:last-child {
+        margin-bottom: 0;
     }
 
-    .home-link {
-        display: inline-block;
-        color: var(--primary-blue, #4f46e5);
-        text-decoration: none;
-        font-weight: 600;
-        margin-top: 1rem;
-        transition: opacity 0.2s ease;
+    .modal-label {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        margin-bottom: 0.5rem;
+        display: block;
     }
 
-    .home-link:hover {
-        opacity: 0.8;
-        text-decoration: underline;
+    .modal-text {
+        font-size: 1rem;
+        color: var(--text-dark);
+        line-height: 1.5;
+    }
+
+    .example-text {
+        font-style: italic;
+        color: var(--text-gray);
     }
 </style>
+
+<script>
+    const modalOverlay = document.getElementById("modal-overlay");
+    const closeBtn = document.getElementById("close-btn");
+    const modalTitle = document.getElementById("modal-title");
+    const modalDefinition = document.getElementById("modal-definition");
+    const modalExample = document.getElementById("modal-example");
+    const wordRows = document.querySelectorAll(".word-row") as NodeListOf<HTMLElement>;
+
+    function openModal(row: HTMLElement) {
+        const word = row.getAttribute("data-word") || "";
+        const definition = row.getAttribute("data-definition") || "";
+        const example = row.getAttribute("data-example") || "";
+
+        if (modalTitle) modalTitle.textContent = word;
+        if (modalDefinition) modalDefinition.textContent = definition;
+        if (modalExample) modalExample.textContent = example;
+
+        modalOverlay?.classList.add("active");
+        document.body.style.overflow = "hidden";
+    }
+
+    function closeModal() {
+        modalOverlay?.classList.remove("active");
+        document.body.style.overflow = "";
+    }
+
+    wordRows.forEach((row) => {
+        row.addEventListener("click", () => openModal(row));
+    });
+
+    closeBtn?.addEventListener("click", closeModal);
+
+    modalOverlay?.addEventListener("click", (e) => {
+        if (e.target === modalOverlay) closeModal();
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeModal();
+    });
+</script>

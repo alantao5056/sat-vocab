@@ -49,6 +49,13 @@ const { title, showHeader = true, headerSubtitle, user } = Astro.props;
                 height: 100%;
             }
 
+            /* Scale the whole UI up a notch. Every size in the app is rem-based,
+               so bumping the root font size enlarges fonts, padding, and gaps
+               together — keeping spacing proportional and text inside its box. */
+            html {
+                font-size: 110%;
+            }
+
             body {
                 background-color: var(--bg-light);
                 color: var(--text-dark);

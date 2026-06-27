@@ -32,11 +32,6 @@ fs.createReadStream(csvPath)
                     definition: (row.definition || "").trim(),
                     example: (row.example || "").trim(),
                     flagged: isFlagged,
-                    total_views: 0,
-                    memorized_count: 0,
-                    fuzzy_count: 0,
-                    unknown_count: 0,
-                    selection_weight: 50,
                 };
             })
             .filter((row) => row.word !== "");
@@ -47,6 +42,7 @@ fs.createReadStream(csvPath)
         console.log(`Initializing database at ${outDbPath}...`);
         const db = createClient({ url: "file:" + outDbPath });
 
+        // Per-word state for canonical SM-2 spaced repetition.
         await db.execute(`
         CREATE TABLE IF NOT EXISTS "Word" (
             "id" INTEGER PRIMARY KEY,
@@ -54,49 +50,32 @@ fs.createReadStream(csvPath)
             "definition" TEXT NOT NULL,
             "example" TEXT NOT NULL,
             "flagged" BOOLEAN NOT NULL DEFAULT 0,
-            "total_views" INTEGER NOT NULL DEFAULT 0,
-            "memorized_count" INTEGER NOT NULL DEFAULT 0,
-            "fuzzy_count" INTEGER NOT NULL DEFAULT 0,
-            "unknown_count" INTEGER NOT NULL DEFAULT 0,
-            "selection_weight" INTEGER NOT NULL DEFAULT 50,
-            "last_rating" TEXT
+            "ease" REAL NOT NULL DEFAULT 2.5,
+            "interval" INTEGER NOT NULL DEFAULT 0,
+            "reps" INTEGER NOT NULL DEFAULT 0,
+            "due" TEXT,
+            "seen" INTEGER NOT NULL DEFAULT 0,
+            "first_seen_date" TEXT,
+            "shuffle_order" REAL NOT NULL DEFAULT 0
         )
     `);
 
-        await db.execute('CREATE INDEX IF NOT EXISTS "Word_last_rating_idx" ON "Word" ("last_rating")');
+        await db.execute('CREATE INDEX IF NOT EXISTS "Word_due_idx" ON "Word" ("due")');
+        await db.execute('CREATE INDEX IF NOT EXISTS "Word_seen_idx" ON "Word" ("seen")');
 
-        // Session tables persist the in-progress 10-word selection (study vs. review mode).
-        for (const table of ["Session", "ReviewSession"]) {
-            await db.execute(`
-        CREATE TABLE IF NOT EXISTS "${table}" (
-            "word_id" INTEGER PRIMARY KEY,
-            "order" INTEGER NOT NULL
-        )
-    `);
-        }
+        // Key/value table for per-user settings (e.g. daily new-word cap).
+        await db.execute('CREATE TABLE IF NOT EXISTS "Meta" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)');
 
         // Clear existing
         await db.execute('DELETE FROM "Word"');
-        await db.execute('DELETE FROM "Session"');
-        await db.execute('DELETE FROM "ReviewSession"');
 
         // Batch insert
         console.log("Inserting records...");
         const statements = wordsToInsert.map((row) => {
             return {
-                sql: `INSERT INTO "Word" (word, definition, example, flagged, total_views, memorized_count, fuzzy_count, unknown_count, selection_weight, last_rating) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                args: [
-                    row.word,
-                    row.definition,
-                    row.example,
-                    row.flagged,
-                    row.total_views,
-                    row.memorized_count,
-                    row.fuzzy_count,
-                    row.unknown_count,
-                    row.selection_weight,
-                    null,
-                ],
+                // Random shuffle_order so new words are introduced in a shuffled order.
+                sql: `INSERT INTO "Word" (word, definition, example, flagged, shuffle_order) VALUES (?, ?, ?, ?, ?)`,
+                args: [row.word, row.definition, row.example, row.flagged, Math.random()],
             };
         });
 

@@ -4,7 +4,7 @@ A standalone Node.js script that parses a vocabulary CSV file and generates the 
 
 ## Features
 
-- Uses `@libsql/client` to generate an SQLite `.db` file containing the app's `Word`, `Session`, and `ReviewSession` tables.
+- Uses `@libsql/client` to generate an SQLite `.db` file containing the app's `Word` (with its SM-2 scheduling columns) and `Meta` tables.
 - Maps the `Flagged` column to a boolean representation.
 - Optional JSON output containing 50 randomly selected words.
 - Runs completely isolated from the main Astro project's dependencies.
