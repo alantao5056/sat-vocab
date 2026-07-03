@@ -1,0 +1,81 @@
+name: Deploy
+
+on:
+    push:
+        branches: [main]
+    workflow_dispatch:
+
+# Never run two deploys at once; let an in-flight deploy finish before the next.
+concurrency:
+    group: deploy-production
+    cancel-in-progress: false
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+
+        env:
+            DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+            DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+            DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }} # optional, defaults to 22
+            DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }} # e.g. /var/www/sat-vocab
+            SERVICE_NAME: ${{ secrets.SERVICE_NAME }} # optional, defaults to sat-vocab
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            # The app reads DB paths and Google OAuth config via import.meta.env,
+            # which Astro inlines at BUILD time. So these must be present now, not
+            # just on the server. Assemble .env.production from one secret per var.
+            # This file is created on the ephemeral runner only and is never shipped.
+            - name: Write production env (inlined into the build)
+              run: |
+                  cat > .env.production <<EOF
+                  MANAGEMENT_DB_PATH=${{ secrets.MANAGEMENT_DB_PATH }}
+                  TEMPLATE_DB_PATH=${{ secrets.TEMPLATE_DB_PATH }}
+                  USER_DB_DIR=${{ secrets.USER_DB_DIR }}
+                  GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+                  GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+                  GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}
+                  EOF
+
+            - name: Build
+              run: npm run build
+
+            - name: Configure SSH
+              run: |
+                  mkdir -p ~/.ssh
+                  printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+                  chmod 600 ~/.ssh/deploy_key
+                  PORT="${DEPLOY_PORT:-22}"
+                  ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+            - name: Deploy build to server
+              run: |
+                  PORT="${DEPLOY_PORT:-22}"
+                  SSH="ssh -i ~/.ssh/deploy_key -p $PORT"
+
+                  # Replace the built output atomically-ish; --delete removes stale assets.
+                  rsync -az --delete -e "$SSH" \
+                      dist/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/dist/"
+
+                  # Ship manifests so the host can install production deps.
+                  rsync -az -e "$SSH" \
+                      package.json package-lock.json \
+                      "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+
+            - name: Install production deps and restart service
+              run: |
+                  PORT="${DEPLOY_PORT:-22}"
+                  SERVICE="${SERVICE_NAME:-sat-vocab}"
+                  ssh -i ~/.ssh/deploy_key -p "$PORT" \
+                      "$DEPLOY_USER@$DEPLOY_HOST" \
+                      "set -e; cd '$DEPLOY_PATH' && npm ci --omit=dev && sudo systemctl restart '$SERVICE'"
