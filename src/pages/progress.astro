@@ -27,7 +27,7 @@ const total = Number(totalResult.rows[0].n);
 const mastered = await bucket(`seen = 1 AND interval >= ?`, [MATURE_INTERVAL], `due ASC, word ASC`);
 const learning = await bucket(`seen = 1 AND interval < ?`, [MATURE_INTERVAL], `due ASC, word ASC`);
 const dueToday = await bucket(`seen = 1 AND due IS NOT NULL AND due <= ?`, [today], `due ASC, word ASC`);
-const allWords = await bucket(`1 = 1`, [], `word ASC`);
+const unseen = await bucket(`seen = 0`, [], `word ASC`);
 
 const pct = total > 0 ? Math.round((mastered.length / total) * 100) : 0;
 
@@ -35,11 +35,11 @@ const stats = [
     { key: "mastered", title: "Mastered", accent: "#10b981", words: mastered },
     { key: "learning", title: "Learning", accent: "#4f46e5", words: learning },
     { key: "due", title: "Due Today", accent: "#f59e0b", words: dueToday },
-    { key: "total", title: "Total", accent: "#6b7280", words: allWords },
+    { key: "unseen", title: "Unseen", accent: "#6b7280", words: unseen },
 ];
 ---
 
-<Layout title="Status - SAT Vocab" user={Astro.locals.user}>
+<Layout title="Progress - SAT Vocab" user={Astro.locals.user}>
     <main>
         <div class="progress-summary">
             <div class="percent-value">{pct}%</div>
