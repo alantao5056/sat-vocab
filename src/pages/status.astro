@@ -1,222 +1,184 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import { getVocabDb } from "../lib/vocab-db";
+import { todayLocal } from "../lib/sm2";
 
 const db = await getVocabDb(Astro.locals.dbPath!);
+const today = todayLocal();
 
 // Mature/"mastered" threshold in days (a common spaced-repetition convention).
 const MATURE_INTERVAL = 21;
 
-// Pull the words for each board column. A word counts as "learning" until its
-// interval reaches the mature threshold, at which point it becomes "mastered".
+// Pull the words for each stat's word-list modal.
 async function bucket(where: string, args: (string | number)[], order: string) {
     const result = await db.execute({
-        sql: `SELECT word, definition, example, due, ease FROM "Word" WHERE ${where} ORDER BY ${order}`,
+        sql: `SELECT word, due FROM "Word" WHERE ${where} ORDER BY ${order}`,
         args,
     });
     return result.rows.map((r) => ({
         word: r.word as string,
-        definition: r.definition as string,
-        example: r.example as string,
         due: (r.due as string | null) ?? null,
-        ease: Number(r.ease),
     }));
 }
 
+const totalResult = await db.execute(`SELECT COUNT(*) AS n FROM "Word"`);
+const total = Number(totalResult.rows[0].n);
+
 const mastered = await bucket(`seen = 1 AND interval >= ?`, [MATURE_INTERVAL], `due ASC, word ASC`);
 const learning = await bucket(`seen = 1 AND interval < ?`, [MATURE_INTERVAL], `due ASC, word ASC`);
+const dueToday = await bucket(`seen = 1 AND due IS NOT NULL AND due <= ?`, [today], `due ASC, word ASC`);
+const allWords = await bucket(`1 = 1`, [], `word ASC`);
 
-const columns = [
+const pct = total > 0 ? Math.round((mastered.length / total) * 100) : 0;
+
+const stats = [
     { key: "mastered", title: "Mastered", accent: "#10b981", words: mastered },
     { key: "learning", title: "Learning", accent: "#4f46e5", words: learning },
+    { key: "due", title: "Due Today", accent: "#f59e0b", words: dueToday },
+    { key: "total", title: "Total", accent: "#6b7280", words: allWords },
 ];
 ---
 
 <Layout title="Status - SAT Vocab" user={Astro.locals.user}>
     <main>
-        <div class="board">
+        <div class="progress-summary">
+            <div class="percent-value">{pct}%</div>
+            <div class="progress-track">
+                <div class="progress-fill" style={`width: ${pct}%`}></div>
+            </div>
+            <p class="percent-label">of your deck mastered</p>
+        </div>
+
+        <div class="stats-grid">
             {
-                columns.map((col) => (
-                    <section class="column" style={`--accent: ${col.accent}`}>
-                        <div class="col-header">
-                            <span class="col-title">{col.title}</span>
-                            <span class="col-count">{col.words.length}</span>
-                        </div>
-                        <div class="col-list">
-                            {col.words.length === 0 ? (
-                                <p class="col-empty">No words</p>
-                            ) : (
-                                col.words.map((w) => (
-                                    <div
-                                        class="word-row"
-                                        data-word={w.word}
-                                        data-definition={w.definition}
-                                        data-example={w.example}
-                                    >
-                                        <span class="w-word">{w.word}</span>
-                                        <span class="w-due">{w.due ?? "—"}</span>
-                                        <span class="w-ease">{w.ease.toFixed(2)}</span>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </section>
+                stats.map((s) => (
+                    <button class="stat-tile" style={`--accent: ${s.accent}`} data-stat={s.key}>
+                        <span class="stat-value">{s.words.length}</span>
+                        <span class="stat-label">{s.title}</span>
+                    </button>
                 ))
             }
         </div>
     </main>
 
-    <!-- Word Detail Modal (read-only: definition + example) -->
-    <div class="modal-overlay" id="modal-overlay">
+    <!-- Word List Modal (read-only: word + due date, no further interaction) -->
+    <div class="modal-overlay" id="list-modal-overlay">
         <div class="modal-content">
-            <button class="close-btn" id="close-btn" aria-label="Close">&times;</button>
-            <h2 class="modal-title" id="modal-title">Word</h2>
+            <button class="close-btn" id="list-close-btn" aria-label="Close">&times;</button>
+            <h2 class="modal-title" id="list-modal-title">Words</h2>
 
-            <div class="modal-section">
-                <span class="modal-label">Definition:</span>
-                <p class="modal-text" id="modal-definition"></p>
-            </div>
-
-            <div class="modal-section">
-                <span class="modal-label">Example:</span>
-                <p class="modal-text example-text" id="modal-example"></p>
+            <div class="modal-word-list">
+                {
+                    stats.map((s) => (
+                        <div class="stat-word-list" data-stat={s.key}>
+                            {s.words.length === 0 ? (
+                                <p class="col-empty">No words</p>
+                            ) : (
+                                s.words.map((w) => (
+                                    <div class="word-row-static">
+                                        <span class="w-word">{w.word}</span>
+                                        <span class="w-due">{w.due ?? "—"}</span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    ))
+                }
             </div>
         </div>
     </div>
 </Layout>
 
-<style is:global>
-    /* The progress board is sized to fit the viewport — never let the page scroll. */
-    html,
-    body {
-        height: 100%;
-        overflow: hidden;
-    }
-</style>
-
 <style>
     main {
         flex: 1;
         min-height: 0;
-        padding: 1rem;
+        padding: 1.5rem 1rem;
         width: 100%;
+        max-width: 640px;
         margin: 0 auto;
         display: flex;
         flex-direction: column;
+        justify-content: center;
+        overflow-y: auto;
     }
 
-    .board {
-        flex: 1;
-        min-height: 0;
+    .progress-summary {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 1.5rem 0 2rem;
+    }
+
+    .percent-value {
+        font-size: 3rem;
+        font-weight: 800;
+        color: var(--primary-blue);
+        line-height: 1;
+    }
+
+    .progress-track {
+        width: 100%;
+        max-width: 360px;
+        height: 0.85rem;
+        background-color: var(--bg-light);
+        border-radius: 9999px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(to right, var(--primary-blue), #10b981);
+        border-radius: 9999px;
+        transition: width 0.3s ease;
+    }
+
+    .percent-label {
+        font-size: 0.85rem;
+        color: var(--text-gray);
+        margin: 0;
+    }
+
+    .stats-grid {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 0.75rem;
     }
 
-    /* On narrow screens stack the two boards: Mastered fills the top half,
-       Learning the bottom half. Each list scrolls within its own half so the
-       page itself never scrolls. */
-    @media (max-width: 640px) {
-        .board {
-            grid-template-columns: 1fr;
-            grid-template-rows: 1fr 1fr;
-        }
-    }
-
-    .column {
-        min-height: 0;
+    .stat-tile {
         display: flex;
         flex-direction: column;
+        align-items: center;
+        gap: 0.3rem;
         background-color: var(--card-bg);
+        border: none;
+        border-top: 3px solid var(--accent);
         border-radius: 14px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        overflow: hidden;
-    }
-
-    .col-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.6rem 0.85rem;
-        border-top: 3px solid var(--accent);
-        border-bottom: 1px solid var(--border-color);
-        flex-shrink: 0;
-    }
-
-    .col-title {
-        font-size: 0.9rem;
-        font-weight: 700;
-        color: var(--text-dark);
-    }
-
-    .col-count {
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: #ffffff;
-        background-color: var(--accent);
-        border-radius: 9999px;
-        padding: 0.1rem 0.55rem;
-        min-width: 1.75rem;
-        text-align: center;
-    }
-
-    .col-list {
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-        padding: 0.4rem 0.5rem;
-    }
-
-    .col-empty {
-        font-size: 0.8rem;
-        color: var(--text-light-gray);
-        text-align: center;
-        padding: 1rem 0;
-    }
-
-    .word-row {
-        display: grid;
-        grid-template-columns: 1fr auto auto;
-        align-items: baseline;
-        gap: 0.5rem;
-        padding: 0.35rem 0.4rem;
-        border-radius: 6px;
+        padding: 1rem 0.5rem;
         cursor: pointer;
+        transition: box-shadow 0.2s ease;
         -webkit-tap-highlight-color: transparent;
     }
 
-    .word-row:hover {
-        background-color: var(--border-color);
+    .stat-tile:hover {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     }
 
-    .word-row:nth-child(odd) {
-        background-color: var(--bg-light);
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: var(--accent);
     }
 
-    .w-word {
+    .stat-label {
         font-size: 0.85rem;
         font-weight: 600;
-        color: var(--text-dark);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .w-due {
-        font-size: 0.7rem;
         color: var(--text-gray);
-        font-variant-numeric: tabular-nums;
     }
 
-    .w-ease {
-        font-size: 0.7rem;
-        color: var(--text-light-gray);
-        font-variant-numeric: tabular-nums;
-        min-width: 2.2rem;
-        text-align: right;
-    }
-
-    /* Modal Styles (read-only word detail) */
+    /* Modal Styles */
     .modal-overlay {
         position: fixed;
         top: 0;
@@ -251,8 +213,9 @@ const columns = [
         box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
         transform: scale(0.9);
         transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        max-height: 90vh;
-        overflow-y: auto;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
     }
 
     .modal-overlay.active .modal-content {
@@ -280,73 +243,91 @@ const columns = [
         margin-bottom: 1rem;
         padding-bottom: 0.75rem;
         border-bottom: 1.5px solid var(--border-color);
+        flex-shrink: 0;
     }
 
-    .modal-section {
-        margin-bottom: 1.25rem;
+    .modal-word-list {
+        min-height: 0;
+        overflow-y: auto;
     }
 
-    .modal-section:last-child {
-        margin-bottom: 0;
+    .stat-word-list {
+        display: none;
+        flex-direction: column;
     }
 
-    .modal-label {
-        font-size: 0.95rem;
-        font-weight: 700;
+    .stat-word-list.active {
+        display: flex;
+    }
+
+    .col-empty {
+        font-size: 0.85rem;
+        color: var(--text-light-gray);
+        text-align: center;
+        padding: 1rem 0;
+    }
+
+    .word-row-static {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.5rem;
+        padding: 0.4rem 0.5rem;
+        border-radius: 6px;
+    }
+
+    .word-row-static:nth-child(odd) {
+        background-color: var(--bg-light);
+    }
+
+    .w-word {
+        font-size: 0.9rem;
+        font-weight: 600;
         color: var(--text-dark);
-        margin-bottom: 0.5rem;
-        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    .modal-text {
-        font-size: 1rem;
-        color: var(--text-dark);
-        line-height: 1.5;
-    }
-
-    .example-text {
-        font-style: italic;
+    .w-due {
+        font-size: 0.75rem;
         color: var(--text-gray);
+        font-variant-numeric: tabular-nums;
+        flex-shrink: 0;
     }
 </style>
 
 <script>
-    const modalOverlay = document.getElementById("modal-overlay");
-    const closeBtn = document.getElementById("close-btn");
-    const modalTitle = document.getElementById("modal-title");
-    const modalDefinition = document.getElementById("modal-definition");
-    const modalExample = document.getElementById("modal-example");
-    const wordRows = document.querySelectorAll(".word-row") as NodeListOf<HTMLElement>;
+    const statTiles = document.querySelectorAll(".stat-tile") as NodeListOf<HTMLElement>;
+    const statLists = document.querySelectorAll(".stat-word-list") as NodeListOf<HTMLElement>;
+    const listModalOverlay = document.getElementById("list-modal-overlay");
+    const listModalTitle = document.getElementById("list-modal-title");
+    const listCloseBtn = document.getElementById("list-close-btn");
 
-    function openModal(row: HTMLElement) {
-        const word = row.getAttribute("data-word") || "";
-        const definition = row.getAttribute("data-definition") || "";
-        const example = row.getAttribute("data-example") || "";
-
-        if (modalTitle) modalTitle.textContent = word;
-        if (modalDefinition) modalDefinition.textContent = definition;
-        if (modalExample) modalExample.textContent = example;
-
-        modalOverlay?.classList.add("active");
+    function openListModal(tile: HTMLElement) {
+        const key = tile.getAttribute("data-stat");
+        statLists.forEach((el) => el.classList.toggle("active", el.getAttribute("data-stat") === key));
+        if (listModalTitle) listModalTitle.textContent = tile.querySelector(".stat-label")?.textContent ?? "Words";
+        listModalOverlay?.classList.add("active");
         document.body.style.overflow = "hidden";
     }
 
-    function closeModal() {
-        modalOverlay?.classList.remove("active");
+    function closeListModal() {
+        listModalOverlay?.classList.remove("active");
         document.body.style.overflow = "";
     }
 
-    wordRows.forEach((row) => {
-        row.addEventListener("click", () => openModal(row));
+    statTiles.forEach((tile) => {
+        tile.addEventListener("click", () => openListModal(tile));
     });
 
-    closeBtn?.addEventListener("click", closeModal);
+    listCloseBtn?.addEventListener("click", closeListModal);
 
-    modalOverlay?.addEventListener("click", (e) => {
-        if (e.target === modalOverlay) closeModal();
+    listModalOverlay?.addEventListener("click", (e) => {
+        if (e.target === listModalOverlay) closeListModal();
     });
 
     document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") closeModal();
+        if (e.key === "Escape") closeListModal();
     });
 </script>

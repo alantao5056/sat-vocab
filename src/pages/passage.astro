@@ -1,10 +1,28 @@
 ---
-import { getVocabDb, addLearnMoreBonus, getWordsPerRound, buildStudyQueue } from "../lib/vocab-db";
+import {
+    getVocabDb,
+    addLearnMoreBonus,
+    getWordsPerRound,
+    buildStudyQueue,
+    getCachedPassage,
+    setCachedPassage,
+    clearCachedPassage,
+    passageMatchesWords,
+    getPassageError,
+    setPassageError,
+    clearPassageError,
+    getPassageGenerationsToday,
+    recordPassageGeneration,
+    type PassageSegment,
+} from "../lib/vocab-db";
 import { GRADES, gradeWord, todayLocal, type WordState } from "../lib/sm2";
+import { generatePassage } from "../lib/passage";
+import { PASSAGE_DAILY_LIMIT, DEV_EMAIL } from "../config";
 import Layout from "../layouts/Layout.astro";
 
 const db = await getVocabDb(Astro.locals.dbPath!);
 const today = todayLocal();
+const isDev = Astro.locals.user?.email === DEV_EMAIL;
 
 if (Astro.request.method === "POST") {
     try {
@@ -15,7 +33,34 @@ if (Astro.request.method === "POST") {
             // Deliberately raise today's new-word cap by one round (today only).
             const roundSize = await getWordsPerRound(db);
             await addLearnMoreBonus(db, today, roundSize);
-            return Astro.redirect("/study");
+            await clearPassageError(db);
+            return Astro.redirect("/passage");
+        }
+
+        if (action === "generate") {
+            // Explicit generate/regenerate: always produces a fresh passage for
+            // the current queue, called from the client via fetch() so the page
+            // can show a loading state while this (slow) call is in flight.
+            const { words: queueWords } = await buildStudyQueue(db, today);
+            if (queueWords.length > 0) {
+                const generationsToday = isDev ? 0 : await getPassageGenerationsToday(db, today);
+                if (!isDev && generationsToday >= PASSAGE_DAILY_LIMIT) {
+                    await setPassageError(db, `You've used all ${PASSAGE_DAILY_LIMIT} passage generations for today.`);
+                    return Astro.redirect("/passage");
+                }
+                // Count the attempt (not just successes) — a failed call still
+                // costs an Anthropic API request.
+                if (!isDev) await recordPassageGeneration(db, today);
+                try {
+                    const segments = await generatePassage(queueWords);
+                    await setCachedPassage(db, { wordIds: queueWords.map((w) => w.id), segments });
+                    await clearPassageError(db);
+                } catch (err) {
+                    console.error("Passage generation failed:", err);
+                    await setPassageError(db, (err as Error).message);
+                }
+            }
+            return Astro.redirect("/passage");
         }
 
         const ratingsJson = formData.get("ratings") as string | null;
@@ -67,23 +112,54 @@ if (Astro.request.method === "POST") {
                 }
             }
 
-            return Astro.redirect("/study");
+            // Grading changed the queue — the cached passage is now stale.
+            await clearCachedPassage(db);
+            await clearPassageError(db);
+            return Astro.redirect("/passage");
         }
     } catch (error) {
         console.error("Error processing submission:", error);
     }
 }
 
-// Build the session queue fresh (filter + sort, not a stored list). The same
-// shared builder powers /passage, so the two modes operate on an identical queue.
+// --- Build the same shared queue the flashcard page uses --------------------
 const { words, stoppedByCap, introducedToday } = await buildStudyQueue(db, today);
+const wordMap = new Map(words.map((w) => [w.id, w]));
 
-// Footer buttons run worst-to-best (0..5); the modal lists them best-first.
-const footerGrades = [...GRADES].reverse();
+// --- Daily generation quota: unlimited for the dev account. -----------------
+const generationsToday = isDev ? 0 : await getPassageGenerationsToday(db, today);
+const generationsRemaining = Math.max(0, PASSAGE_DAILY_LIMIT - generationsToday);
+
+// --- Resolve the passage: reuse the cache when it matches; otherwise the page
+// shows a "Generate" prompt (or a retry prompt if the last attempt failed) and
+// waits for the client to POST action=generate. Generation never runs inline
+// on a GET — it's a slow Anthropic call, so it always goes through the
+// loading-screen flow driven by client-side JS. ---------------------------
+let segments: PassageSegment[] | null = null;
+let passageError: string | null = null;
+let limitReached = false;
+
+if (words.length > 0) {
+    const ids = words.map((w) => w.id);
+    const cached = await getCachedPassage(db);
+    if (cached && passageMatchesWords(cached, ids)) {
+        segments = cached.segments;
+    } else {
+        passageError = await getPassageError(db);
+        limitReached = !isDev && generationsRemaining <= 0;
+    }
+}
 ---
 
-<Layout title="Study - SAT Vocab" user={Astro.locals.user}>
+<Layout title="Passage - SAT Vocab" user={Astro.locals.user}>
     <main>
+        <p class="gen-limit-banner">
+            {
+                isDev
+                    ? "Dev account — unlimited passage generations."
+                    : `${generationsRemaining} of ${PASSAGE_DAILY_LIMIT} passage generations left today.`
+            }
+        </p>
         {
             words.length === 0 ? (
                 <div class="done-state">
@@ -107,37 +183,49 @@ const footerGrades = [...GRADES].reverse();
                         <p>No words are due right now. Come back tomorrow to keep your memory fresh.</p>
                     )}
                 </div>
-            ) : (
+            ) : segments ? (
                 <Fragment>
-                    <div class="word-grid">
-                        {words.map((word) => (
-                            <div
-                                class="word-card"
-                                data-id={word.id}
-                                data-word={word.word}
-                                data-definition={word.definition}
-                                data-example={word.example}
-                            >
-                                <div class="word-content">{word.word}</div>
-                                <div class="card-footer">
-                                    {footerGrades.map((g) => (
-                                        <button
-                                            class={`grade-btn ${g.pass ? "pass" : "fail"}`}
-                                            title={`${g.label} — ${g.description}`}
-                                            data-q={g.q}
-                                        >
-                                            {g.q}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    <div class="passage-wrap" id="passage-view">
+                        <p class="passage-hint">Tap an underlined word to rate how well you recall it, then submit.</p>
+                        <article class="passage-text">
+                            {segments!.map((seg) =>
+                                "wordId" in seg ? (
+                                    (() => {
+                                        const w = wordMap.get(seg.wordId)!;
+                                        return (
+                                            <button
+                                                class="vocab"
+                                                data-id={w.id}
+                                                data-word={w.word}
+                                                data-definition={w.definition}
+                                                data-example={w.example}
+                                            >
+                                                {seg.text}
+                                            </button>
+                                        );
+                                    })()
+                                ) : (
+                                    <Fragment>{seg.text}</Fragment>
+                                )
+                            )}
+                        </article>
 
-                    <div class="submit-container">
-                        <button class="submit-btn" id="submit-btn">
-                            Submit Progress
-                        </button>
+                        <div class="action-bar">
+                            <button
+                                class="secondary-btn"
+                                id="new-passage-btn"
+                                type="button"
+                                disabled={!isDev && generationsRemaining <= 0}
+                                title={
+                                    !isDev && generationsRemaining <= 0 ? "Daily generation limit reached" : undefined
+                                }
+                            >
+                                New passage
+                            </button>
+                            <button class="submit-btn" id="submit-btn">
+                                Submit Progress
+                            </button>
+                        </div>
                     </div>
 
                     {/* Hidden form for submission */}
@@ -145,8 +233,37 @@ const footerGrades = [...GRADES].reverse();
                         <input type="hidden" name="ratings" id="ratings-input" />
                     </form>
                 </Fragment>
+            ) : (
+                <div class="generate-state" id="generate-state">
+                    <div class="done-emoji">{limitReached ? "⏳" : passageError ? "⚠️" : "📖"}</div>
+                    <h2>
+                        {limitReached
+                            ? "Daily limit reached"
+                            : passageError
+                              ? "Couldn't generate a passage"
+                              : "Generate a passage"}
+                    </h2>
+                    <p>
+                        {limitReached
+                            ? `You've used all ${PASSAGE_DAILY_LIMIT} passage generations for today. Come back tomorrow for more.`
+                            : passageError
+                              ? `${passageError} Make sure ANTHROPIC_API_KEY is set, then try again.`
+                              : "Build a short reading passage that weaves in your current study words."}
+                    </p>
+                    {!limitReached && (
+                        <button class="submit-btn" id="generate-btn" type="button">
+                            {passageError ? "Try again" : "Generate Passage"}
+                        </button>
+                    )}
+                </div>
             )
         }
+
+        <div class="loading-state" id="loading-state">
+            <div class="spinner" aria-hidden="true"></div>
+            <p>Generating your passage&hellip;</p>
+            <p>Please stay on this page.</p>
+        </div>
     </main>
 
     <!-- Word Detail Modal -->
@@ -191,11 +308,11 @@ const footerGrades = [...GRADES].reverse();
     <!-- Warning Modal -->
     <div class="modal-overlay" id="warning-modal-overlay">
         <div class="modal-content">
-            <h2 class="modal-title">Ungraded Cards</h2>
+            <h2 class="modal-title">Ungraded Words</h2>
 
             <div class="modal-section">
                 <p class="modal-text">
-                    You have <strong id="unrated-count">0</strong> cards that aren't graded yet. Do you want to mark them
+                    You have <strong id="unrated-count">0</strong> words that aren't graded yet. Do you want to mark them
                     all with the same grade?
                 </p>
             </div>
@@ -225,15 +342,6 @@ const footerGrades = [...GRADES].reverse();
     </div>
 </Layout>
 
-<style is:global>
-    /* The study session is sized to fit the viewport — never let the page scroll. */
-    html,
-    body {
-        height: 100%;
-        overflow: hidden;
-    }
-</style>
-
 <style>
     main {
         flex: 1;
@@ -242,6 +350,14 @@ const footerGrades = [...GRADES].reverse();
         width: 100%;
         display: flex;
         flex-direction: column;
+        align-items: center;
+    }
+
+    .gen-limit-banner {
+        color: var(--text-gray);
+        font-size: 0.85rem;
+        text-align: center;
+        margin: 0 0 0.75rem;
     }
 
     .done-state {
@@ -269,7 +385,7 @@ const footerGrades = [...GRADES].reverse();
         color: var(--text-gray);
         line-height: 1.5;
         margin: 0;
-        max-width: 320px;
+        max-width: 360px;
     }
 
     .done-state form {
@@ -283,148 +399,135 @@ const footerGrades = [...GRADES].reverse();
         margin-top: 0.6rem !important;
     }
 
-    .session-meta {
-        display: flex;
-        justify-content: center;
-        gap: 0.5rem;
-        margin-bottom: 0.75rem;
-        flex-shrink: 0;
-    }
-
-    .session-meta span {
-        background-color: var(--bg-light);
-        color: var(--text-gray);
-        font-size: 0.8rem;
-        font-weight: 600;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-    }
-
-    /* Columns/rows are computed by JS to spread the cards across the whole
-       viewport for whatever round size the user picked (see the layout script). */
-    .word-grid {
-        flex: 1;
-        min-height: 0;
-        display: grid;
-        grid-template-columns: repeat(var(--cols, 2), 1fr);
-        grid-template-rows: repeat(var(--rows, 1), 1fr);
-        gap: 0.75rem;
-    }
-
-    .word-card {
-        background-color: var(--card-bg);
-        border-radius: 14px;
+    .generate-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        margin: auto;
         display: flex;
         flex-direction: column;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        overflow: hidden;
-        min-height: 0;
-        cursor: pointer;
-        transition: box-shadow 0.2s ease;
-        -webkit-tap-highlight-color: transparent;
-    }
-
-    /* On mobile the grid becomes a single scrollable column of fixed-height
-       cards instead of a fit-to-viewport grid — there's no room to shrink
-       cards to fit every round size on a small screen, so we scroll instead. */
-    @media (max-width: 640px) {
-        .word-grid {
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .word-card {
-            flex: 0 0 auto;
-            min-height: 7.5rem;
-        }
-    }
-
-    .word-card:hover {
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    }
-
-    /* Faint tint reflecting the selected grade (green = pass, red = fail). */
-    .word-card.graded-pass {
-        background-color: #ecfdf5;
-    }
-
-    .word-card.graded-fail {
-        background-color: #fef2f2;
-    }
-
-    .word-card.graded-pass .card-footer {
-        background-color: #ecfdf5;
-        border-top-color: #c2f7dc;
-    }
-
-    .word-card.graded-fail .card-footer {
-        background-color: #fef2f2;
-        border-top-color: #f9d0d0;
-    }
-
-    .word-content {
-        flex: 1;
-        min-height: 0;
-        display: flex;
         align-items: center;
-        justify-content: center;
-        padding: 0.5rem 0.75rem;
-        font-size: clamp(1.25rem, 5vh, 1.5rem);
-        font-weight: 600;
+        gap: 1rem;
+        max-width: 400px;
+    }
+
+    .generate-state h2 {
+        font-size: 1.5rem;
         color: var(--text-dark);
-        text-align: center;
+        margin: 0;
     }
 
-    .card-footer {
-        border-top: 1.5px solid var(--border-color);
-        display: flex;
-        justify-content: space-between;
+    .generate-state p {
+        color: var(--text-gray);
+        line-height: 1.5;
+        margin: 0;
+    }
+
+    .generate-state .submit-btn {
+        flex: none;
+        width: 100%;
+        max-width: 260px;
+    }
+
+    /* Hidden by default; JS shows this in place of the generate prompt or the
+       passage view while a generation request is in flight. */
+    .loading-state {
+        display: none;
+        margin: auto;
+        flex-direction: column;
         align-items: center;
-        padding: 0.4rem 0.4rem;
-        background-color: #ffffff;
-        flex-shrink: 0;
-        gap: 0.15rem;
+        gap: 1.25rem;
+        padding: 3rem 1rem;
+        color: var(--text-gray);
     }
 
-    .grade-btn {
-        flex: 1;
-        background: none;
-        border: 1.5px solid transparent;
-        cursor: pointer;
-        padding: 0.3rem 0;
+    .loading-state.active {
+        display: flex;
+    }
+
+    .spinner {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+        border: 3px solid var(--border-color);
+        border-top-color: var(--primary-blue);
+        animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .passage-wrap {
+        width: 100%;
+        max-width: 720px;
+    }
+
+    .passage-hint {
+        color: var(--text-gray);
         font-size: 0.9rem;
-        font-weight: 700;
-        border-radius: 8px;
-        transition: all 0.15s ease;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+
+    .passage-text {
+        background-color: var(--card-bg);
+        border-radius: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        padding: 2rem;
+        font-size: 1.15rem;
+        line-height: 1.9;
+        color: var(--text-dark);
+        /* Preserve the paragraph breaks the model produced. */
+        white-space: pre-wrap;
+    }
+
+    /* Inline, clickable vocabulary token. */
+    .vocab {
+        display: inline;
+        font: inherit;
+        color: var(--primary-dark);
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        font-weight: 600;
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 2px;
+        border-radius: 4px;
+        transition: background-color 0.15s ease;
         -webkit-tap-highlight-color: transparent;
     }
 
-    .grade-btn.pass {
+    .vocab:hover {
+        background-color: #eef2ff;
+    }
+
+    .vocab.graded-pass {
         color: #047857;
-    }
-
-    .grade-btn.fail {
-        color: #b91c1c;
-    }
-
-    .grade-btn:active {
-        transform: scale(0.9);
-    }
-
-    .grade-btn.pass.selected {
+        text-decoration-color: #10b981;
         background-color: #ecfdf5;
-        border-color: #10b981;
     }
 
-    .grade-btn.fail.selected {
+    .vocab.graded-fail {
+        color: #b91c1c;
+        text-decoration-color: #ef4444;
         background-color: #fef2f2;
-        border-color: #ef4444;
+    }
+
+    .action-bar {
+        width: 100%;
+        max-width: 720px;
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1.25rem;
+        margin-bottom: 1.25rem;
     }
 
     .submit-btn {
-        width: 100%;
+        flex: 1;
         background-color: var(--primary-blue);
         color: white;
         border: none;
@@ -444,12 +547,33 @@ const footerGrades = [...GRADES].reverse();
         background-color: var(--primary-dark);
     }
 
-    .submit-container {
-        margin-top: 0.75rem;
+    .secondary-btn {
         flex-shrink: 0;
+        height: 100%;
+        background-color: #ffffff;
+        color: var(--text-dark);
+        border: 1.5px solid var(--border-color);
+        padding: 0.85rem 1.25rem;
+        border-radius: 12px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
     }
 
-    /* Modal Styles */
+    .secondary-btn:hover {
+        border-color: var(--primary-blue);
+        color: var(--primary-blue);
+    }
+
+    .secondary-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+        border-color: var(--border-color);
+        color: var(--text-gray);
+    }
+
+    /* Modal Styles (shared with the flashcard page) */
     .modal-overlay {
         position: fixed;
         top: 0;
@@ -488,8 +612,6 @@ const footerGrades = [...GRADES].reverse();
         overflow-y: auto;
     }
 
-    /* The detail modal lays definition/example (left) beside the grade list
-       (right) so it fits the viewport without scrolling. */
     .modal-content-detail {
         max-width: 760px;
         max-height: 90vh;
@@ -531,8 +653,6 @@ const footerGrades = [...GRADES].reverse();
     @media (max-width: 640px) {
         .modal-content-detail {
             max-width: 400px;
-            /* Fall back to scrolling the whole modal if the stacked content is
-               taller than the viewport, so the definition is never hidden. */
             overflow-y: auto;
         }
 
@@ -541,7 +661,6 @@ const footerGrades = [...GRADES].reverse();
             gap: 1.25rem;
         }
 
-        /* Each part takes its natural height; nothing collapses to zero. */
         .modal-info,
         .modal-grades {
             flex: 0 0 auto;
@@ -601,12 +720,6 @@ const footerGrades = [...GRADES].reverse();
     .example-text {
         font-style: italic;
         color: var(--text-gray);
-    }
-
-    .modal-footer {
-        margin-top: 1.5rem;
-        padding-top: 1rem;
-        border-top: 1.5px solid var(--border-color);
     }
 
     .modal-footer-text {
@@ -699,8 +812,9 @@ const footerGrades = [...GRADES].reverse();
         border-color: var(--primary-blue);
     }
 
-    .word-card.unrated-error {
+    .vocab.unrated-error {
         box-shadow: 0 0 0 2px #ef4444;
+        border-radius: 4px;
     }
 
     .warning-modal-actions {
@@ -738,52 +852,40 @@ const footerGrades = [...GRADES].reverse();
 </style>
 
 <script>
-    const modalOverlay = document.getElementById("modal-overlay");
-    const closeBtn = document.getElementById("close-btn");
-    const wordCards = document.querySelectorAll(".word-card") as NodeListOf<HTMLElement>;
+    // --- Generate / regenerate: show a loading state while the (slow) passage
+    // generation request is in flight, then reload — the server has already
+    // cached the result, so the reload is fast. ------------------------------
+    const generateBtn = document.getElementById("generate-btn");
+    const newPassageBtn = document.getElementById("new-passage-btn");
+    const generateState = document.getElementById("generate-state");
+    const passageView = document.getElementById("passage-view");
+    const loadingState = document.getElementById("loading-state");
 
-    // --- Fill the screen: pick the column/row split whose cells come closest to
-    // a pleasant card shape for the current card count and grid size. ---------
-    const wordGrid = document.querySelector(".word-grid") as HTMLElement | null;
+    async function startGenerate() {
+        generateState?.style.setProperty("display", "none");
+        passageView?.style.setProperty("display", "none");
+        loadingState?.classList.add("active");
 
-    function layoutGrid() {
-        if (!wordGrid) return;
-        const n = wordCards.length;
-        if (n === 0) return;
-
-        // Mobile switches to a single scrolling column via CSS — the computed
-        // --cols/--rows below don't apply there, so skip the work.
-        if (window.matchMedia("(max-width: 640px)").matches) return;
-
-        const width = wordGrid.clientWidth;
-        const height = wordGrid.clientHeight;
-        if (width === 0 || height === 0) return;
-
-        const TARGET_RATIO = 1.4; // desired card width / height
-        let bestCols = 1;
-        let bestScore = Infinity;
-        for (let cols = 1; cols <= n; cols++) {
-            const rows = Math.ceil(n / cols);
-            const cellWidth = width / cols;
-            const cellHeight = height / rows;
-            // Closeness to the target shape, plus a small penalty for empty cells
-            // left over in the last row so we don't waste space.
-            const ratioScore = Math.abs(Math.log(cellWidth / cellHeight / TARGET_RATIO));
-            const emptyPenalty = (cols * rows - n) * 0.05;
-            const score = ratioScore + emptyPenalty;
-            if (score < bestScore) {
-                bestScore = score;
-                bestCols = cols;
-            }
+        try {
+            await fetch("/passage", {
+                method: "POST",
+                body: new URLSearchParams({ action: "generate" }),
+            });
+        } catch (err) {
+            console.error("Passage generation request failed:", err);
         }
-
-        const bestRows = Math.ceil(n / bestCols);
-        wordGrid.style.setProperty("--cols", String(bestCols));
-        wordGrid.style.setProperty("--rows", String(bestRows));
+        window.location.href = "/passage";
     }
 
-    layoutGrid();
-    window.addEventListener("resize", layoutGrid);
+    generateBtn?.addEventListener("click", startGenerate);
+    newPassageBtn?.addEventListener("click", startGenerate);
+
+    const modalOverlay = document.getElementById("modal-overlay");
+    const closeBtn = document.getElementById("close-btn");
+    const vocabTokens = document.querySelectorAll(".vocab") as NodeListOf<HTMLElement>;
+
+    // Unique word ids in the passage (a word may appear more than once).
+    const wordIds = Array.from(new Set(Array.from(vocabTokens).map((t) => t.getAttribute("data-id") || "0")));
 
     const modalTitle = document.getElementById("modal-title");
     const modalDefinition = document.getElementById("modal-definition");
@@ -801,34 +903,40 @@ const footerGrades = [...GRADES].reverse();
     const ratingsForm = document.getElementById("ratings-form") as HTMLFormElement | null;
     const ratingsInput = document.getElementById("ratings-input") as HTMLInputElement | null;
 
-    let activeCard: HTMLElement | null = null;
+    let activeId: string | null = null;
     let warningSelectedGrade: string | null = null;
 
-    function updateCardGrade(card: HTMLElement, q: string) {
-        card.setAttribute("data-grade", q);
-        const options = card.querySelectorAll(".grade-btn");
-        options.forEach((opt) => {
-            opt.classList.toggle("selected", opt.getAttribute("data-q") === q);
-        });
-        // Tint the card to reflect the grade: 3-5 are passes (green), 0-2 fails (red).
-        const pass = parseInt(q, 10) >= 3;
-        card.classList.toggle("graded-pass", pass);
-        card.classList.toggle("graded-fail", !pass);
-        card.classList.remove("unrated-error");
+    function tokensFor(id: string): HTMLElement[] {
+        return Array.from(vocabTokens).filter((t) => t.getAttribute("data-id") === id);
     }
 
-    function openModal(card: HTMLElement) {
-        activeCard = card;
-        const word = card.getAttribute("data-word") || "";
-        const definition = card.getAttribute("data-definition") || "";
-        const example = card.getAttribute("data-example") || "";
+    function gradeOf(id: string): string | null {
+        const token = tokensFor(id).find((t) => t.hasAttribute("data-grade"));
+        return token ? token.getAttribute("data-grade") : null;
+    }
+
+    // Apply a grade to every occurrence of the word so they tint consistently.
+    function setWordGrade(id: string, q: string) {
+        const pass = parseInt(q, 10) >= 3;
+        tokensFor(id).forEach((t) => {
+            t.setAttribute("data-grade", q);
+            t.classList.toggle("graded-pass", pass);
+            t.classList.toggle("graded-fail", !pass);
+            t.classList.remove("unrated-error");
+        });
+    }
+
+    function openModal(token: HTMLElement) {
+        activeId = token.getAttribute("data-id");
+        const word = token.getAttribute("data-word") || "";
+        const definition = token.getAttribute("data-definition") || "";
+        const example = token.getAttribute("data-example") || "";
 
         if (modalTitle) modalTitle.textContent = word;
         if (modalDefinition) modalDefinition.textContent = definition;
         if (modalExample) modalExample.textContent = example;
 
-        // Sync modal grade buttons with the card's current selection.
-        const selected = card.getAttribute("data-grade");
+        const selected = activeId ? gradeOf(activeId) : null;
         modalGradeBtns.forEach((btn) => {
             btn.classList.toggle("selected", btn.getAttribute("data-q") === selected);
         });
@@ -840,20 +948,11 @@ const footerGrades = [...GRADES].reverse();
     function closeModal() {
         modalOverlay?.classList.remove("active");
         document.body.style.overflow = "";
-        activeCard = null;
+        activeId = null;
     }
 
-    wordCards.forEach((card) => {
-        card.addEventListener("click", (e) => {
-            const target = e.target as HTMLElement;
-            const gradeBtn = target.closest(".grade-btn");
-            if (gradeBtn) {
-                const q = gradeBtn.getAttribute("data-q");
-                if (q !== null) updateCardGrade(card, q);
-                return;
-            }
-            openModal(card);
-        });
+    vocabTokens.forEach((token) => {
+        token.addEventListener("click", () => openModal(token));
     });
 
     closeBtn?.addEventListener("click", closeModal);
@@ -865,17 +964,17 @@ const footerGrades = [...GRADES].reverse();
     modalGradeBtns.forEach((btn) => {
         btn.addEventListener("click", () => {
             const q = btn.getAttribute("data-q");
-            if (activeCard && q !== null) updateCardGrade(activeCard, q);
+            if (activeId && q !== null) setWordGrade(activeId, q);
             closeModal();
         });
     });
 
     // Validation and Warning Modal Logic
     submitBtn?.addEventListener("click", () => {
-        const ungraded = Array.from(wordCards).filter((card) => !card.hasAttribute("data-grade"));
+        const ungraded = wordIds.filter((id) => gradeOf(id) === null);
 
         if (ungraded.length > 0) {
-            ungraded.forEach((card) => card.classList.add("unrated-error"));
+            ungraded.forEach((id) => tokensFor(id).forEach((t) => t.classList.add("unrated-error")));
             if (unratedCountSpan) unratedCountSpan.textContent = ungraded.length.toString();
             warningModalOverlay?.classList.add("active");
             document.body.style.overflow = "hidden";
@@ -883,11 +982,7 @@ const footerGrades = [...GRADES].reverse();
             warningGradeBtns.forEach((btn) => btn.classList.remove("selected"));
             if (warningConfirmBtn) warningConfirmBtn.disabled = true;
         } else {
-            const ratings = Array.from(wordCards).map((card) => {
-                const id = card.getAttribute("data-id") || "0";
-                const q = card.getAttribute("data-grade") || "0";
-                return { id: parseInt(id), q: parseInt(q) };
-            });
+            const ratings = wordIds.map((id) => ({ id: parseInt(id), q: parseInt(gradeOf(id) || "0") }));
 
             if (submitBtn) {
                 submitBtn.disabled = true;
@@ -916,8 +1011,7 @@ const footerGrades = [...GRADES].reverse();
 
     warningConfirmBtn?.addEventListener("click", () => {
         if (warningSelectedGrade !== null) {
-            const ungraded = Array.from(wordCards).filter((card) => !card.hasAttribute("data-grade"));
-            ungraded.forEach((card) => updateCardGrade(card, warningSelectedGrade!));
+            wordIds.filter((id) => gradeOf(id) === null).forEach((id) => setWordGrade(id, warningSelectedGrade!));
             warningModalOverlay?.classList.remove("active");
             document.body.style.overflow = "";
             submitBtn?.click();

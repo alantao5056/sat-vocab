@@ -15,6 +15,7 @@
         "format:all": "prettier --write ."
     },
     "dependencies": {
+        "@anthropic-ai/sdk": "^0.106.0",
         "@astrojs/check": "^0.9.8",
         "@astrojs/node": "^10.0.4",
         "@libsql/client": "^0.17.4",

@@ -93,6 +93,10 @@ const META_NEW_WORDS_PER_DAY = "new_words_per_day";
 const META_WORDS_PER_ROUND = "words_per_round";
 const META_EXTRA_NEW_DATE = "extra_new_date";
 const META_EXTRA_NEW_COUNT = "extra_new_count";
+const META_CURRENT_PASSAGE = "current_passage";
+const META_PASSAGE_ERROR = "passage_error";
+const META_PASSAGE_GEN_DATE = "passage_gen_date";
+const META_PASSAGE_GEN_COUNT = "passage_gen_count";
 
 async function getMeta(db: Client, key: string): Promise<string | null> {
     const result = await db.execute({ sql: `SELECT value FROM "Meta" WHERE key = ?`, args: [key] });
@@ -160,4 +164,180 @@ export async function addLearnMoreBonus(
     const next = (Number.isFinite(current) ? current : 0) + increment;
     await setMeta(db, META_EXTRA_NEW_DATE, today);
     await setMeta(db, META_EXTRA_NEW_COUNT, String(next));
+}
+
+// --- Shared study queue ----------------------------------------------------
+
+/** A single word as presented in a study round. */
+export interface QueueWord {
+    id: number;
+    word: string;
+    definition: string;
+    example: string;
+}
+
+/**
+ * The session queue plus the diagnostics both study modes need. The queue is
+ * built fresh from the `Word` SM-2 state on every request (filter + sort, not a
+ * stored list), so the flashcard and passage modes share exactly the same words.
+ */
+export interface StudyQueue {
+    words: QueueWord[];
+    /** Number of due/review words at the front of the queue. */
+    dueCount: number;
+    /** Remaining room under today's new-word cap after words already introduced. */
+    newAllowance: number;
+    /** Unseen words still in the deck (only computed when the queue is empty). */
+    unseenRemaining: number;
+    /** Whether the queue is empty because of the daily cap (not an exhausted deck). */
+    stoppedByCap: boolean;
+    /** New words already introduced today. */
+    introducedToday: number;
+}
+
+/**
+ * Build the study queue for `today`: take up to the per-user round size of
+ * already-seen words that are due (most overdue first), then top up with
+ * never-seen words (shuffled) without exceeding today's remaining new-word cap.
+ * Reviews always come before new words. Both `/study` and `/passage` call this
+ * so the two modes operate on an identical queue.
+ */
+export async function buildStudyQueue(db: Client, today: string): Promise<StudyQueue> {
+    const roundSize = await getWordsPerRound(db);
+    const cap = await getEffectiveNewWordCap(db, today);
+
+    const introducedResult = await db.execute({
+        sql: `SELECT COUNT(*) AS n FROM "Word" WHERE first_seen_date = ?`,
+        args: [today],
+    });
+    const introducedToday = Number(introducedResult.rows[0].n);
+
+    // 1-3. Due/review cards: already-seen words past their due date, most overdue first.
+    const dueResult = await db.execute({
+        sql: `SELECT id, word, definition, example FROM "Word"
+              WHERE seen = 1 AND due IS NOT NULL AND due <= ?
+              ORDER BY due ASC, shuffle_order ASC
+              LIMIT ?`,
+        args: [today, roundSize],
+    });
+    const dueWords = dueResult.rows;
+
+    // 4-5. Top up with never-seen words, never exceeding today's remaining cap.
+    const newAllowance = Math.max(0, cap - introducedToday);
+    const needNew = Math.max(0, roundSize - dueWords.length);
+    const takeNew = Math.min(needNew, newAllowance);
+
+    let newWords: typeof dueWords = [];
+    if (takeNew > 0) {
+        const newResult = await db.execute({
+            sql: `SELECT id, word, definition, example FROM "Word"
+                  WHERE seen = 0
+                  ORDER BY shuffle_order ASC, id ASC
+                  LIMIT ?`,
+            args: [takeNew],
+        });
+        newWords = newResult.rows;
+    }
+
+    const words: QueueWord[] = [...dueWords, ...newWords].map((r) => ({
+        id: Number(r.id),
+        word: r.word as string,
+        definition: r.definition as string,
+        example: r.example as string,
+    }));
+
+    // Determine why the queue is empty so callers can offer "Learn 10 more" only
+    // when the cap (not an exhausted deck) is what stopped us.
+    let unseenRemaining = 0;
+    if (words.length === 0) {
+        const unseenResult = await db.execute(`SELECT COUNT(*) AS n FROM "Word" WHERE seen = 0`);
+        unseenRemaining = Number(unseenResult.rows[0].n);
+    }
+    const stoppedByCap = words.length === 0 && dueWords.length === 0 && newAllowance === 0 && unseenRemaining > 0;
+
+    return {
+        words,
+        dueCount: dueWords.length,
+        newAllowance,
+        unseenRemaining,
+        stoppedByCap,
+        introducedToday,
+    };
+}
+
+// --- Passage cache (per-user, in the Meta table) ---------------------------
+
+/** One run of generated passage text: plain prose, or a clickable vocab word. */
+export type PassageSegment = { text: string } | { text: string; wordId: number };
+
+/** A cached passage plus the set of word ids it was generated for. */
+export interface CachedPassage {
+    wordIds: number[];
+    segments: PassageSegment[];
+}
+
+/**
+ * The currently-cached passage, or null if none is stored. The caller decides
+ * whether it is still valid by comparing `wordIds` against the current queue.
+ */
+export async function getCachedPassage(db: Client): Promise<CachedPassage | null> {
+    const raw = await getMeta(db, META_CURRENT_PASSAGE);
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw) as CachedPassage;
+        if (!Array.isArray(parsed.wordIds) || !Array.isArray(parsed.segments)) return null;
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+/** Store the current passage so reloads reuse it instead of regenerating. */
+export async function setCachedPassage(db: Client, payload: CachedPassage): Promise<void> {
+    await setMeta(db, META_CURRENT_PASSAGE, JSON.stringify(payload));
+}
+
+/** Drop the cached passage (e.g. after grading changes the queue). */
+export async function clearCachedPassage(db: Client): Promise<void> {
+    await db.execute({ sql: `DELETE FROM "Meta" WHERE key = ?`, args: [META_CURRENT_PASSAGE] });
+}
+
+/** True when a cached passage was generated for exactly `wordIds` (order-independent). */
+export function passageMatchesWords(cached: CachedPassage, wordIds: number[]): boolean {
+    if (cached.wordIds.length !== wordIds.length) return false;
+    const a = [...cached.wordIds].sort((x, y) => x - y);
+    const b = [...wordIds].sort((x, y) => x - y);
+    return a.every((v, i) => v === b[i]);
+}
+
+/** The error message from the last failed generation attempt, or null if none. */
+export async function getPassageError(db: Client): Promise<string | null> {
+    return getMeta(db, META_PASSAGE_ERROR);
+}
+
+/** Record that generation failed, so the next GET can show the error + retry. */
+export async function setPassageError(db: Client, message: string): Promise<void> {
+    await setMeta(db, META_PASSAGE_ERROR, message);
+}
+
+/** Clear a stored generation error (e.g. once a generation succeeds, or the queue changes). */
+export async function clearPassageError(db: Client): Promise<void> {
+    await db.execute({ sql: `DELETE FROM "Meta" WHERE key = ?`, args: [META_PASSAGE_ERROR] });
+}
+
+// --- Passage generation daily rate limit ------------------------------------
+
+/** Number of passage generation calls already made today (0 if none yet today). */
+export async function getPassageGenerationsToday(db: Client, today: string): Promise<number> {
+    const date = await getMeta(db, META_PASSAGE_GEN_DATE);
+    if (date !== today) return 0;
+    const count = parseInt((await getMeta(db, META_PASSAGE_GEN_COUNT)) ?? "0", 10);
+    return Number.isFinite(count) ? count : 0;
+}
+
+/** Record one passage generation call against today's count (resets across day boundaries). */
+export async function recordPassageGeneration(db: Client, today: string): Promise<void> {
+    const current = await getPassageGenerationsToday(db, today);
+    await setMeta(db, META_PASSAGE_GEN_DATE, today);
+    await setMeta(db, META_PASSAGE_GEN_COUNT, String(current + 1));
 }

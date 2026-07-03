@@ -11,6 +11,14 @@ export const DEFAULT_NEW_WORDS_PER_DAY = 30;
 // How many extra new words a single "Learn 10 more" tap adds to today's cap.
 export const LEARN_MORE_INCREMENT = 10;
 
+// Passage generation calls the Anthropic API, which costs money — cap how many
+// a normal user can trigger per day. The dev account is exempt (see DEV_EMAIL).
+export const PASSAGE_DAILY_LIMIT = 3;
+
+// The account with this email has no usage restrictions (e.g. the passage
+// generation cap) — used for development/testing.
+export const DEV_EMAIL = "alantao5056@gmail.com";
+
 // Selectable "intensity" presets for the daily new-word cap.
 export const INTENSITY_PRESETS = [
     { key: "casual", label: "Casual", value: 15 },

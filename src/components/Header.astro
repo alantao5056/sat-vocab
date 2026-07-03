@@ -12,6 +12,7 @@ const { subtitle, user } = Astro.props;
 
 const pathname = Astro.url.pathname;
 const isStudy = pathname.startsWith("/study");
+const isPassage = pathname.startsWith("/passage");
 const isStatus = pathname.startsWith("/status");
 const isSettings = pathname.startsWith("/settings");
 ---
@@ -27,6 +28,7 @@ const isSettings = pathname.startsWith("/settings");
             </a>
             <nav class="nav">
                 <a href="/study" class:list={["nav-link", { active: isStudy }]}>Study</a>
+                <a href="/passage" class:list={["nav-link", { active: isPassage }]}>Passage</a>
                 <a href="/status" class:list={["nav-link", { active: isStatus }]}>Progress</a>
             </nav>
         </div>
