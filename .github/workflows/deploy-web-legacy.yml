@@ -74,6 +74,10 @@ jobs:
                   PORT="${DEPLOY_PORT:-22}"
                   SSH="ssh -i ~/.ssh/deploy_key -p $PORT"
 
+                  # rsync creates only the last path component, so on a fresh host
+                  # the missing web-legacy/ parent makes dist/ fail with ENOENT.
+                  $SSH "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/web-legacy/dist'"
+
                   # Replace the built output atomically-ish; --delete removes stale assets.
                   rsync -az --delete -e "$SSH" \
                       dist/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/web-legacy/dist/"
