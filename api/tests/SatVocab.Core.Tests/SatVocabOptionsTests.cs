@@ -4,10 +4,19 @@ namespace SatVocab.Core.Tests;
 
 public class SatVocabOptionsTests
 {
+    /// <summary>
+    /// Builds a fully qualified path for whichever platform the tests are running on —
+    /// development is Windows, CI and production are Linux. A hard-coded "C:\..." is not
+    /// rooted on Linux, and every path here has to be, because <c>Path.GetFullPath</c>
+    /// rejects a base path that is not fully qualified.
+    /// </summary>
+    private static string Absolute(params string[] parts) =>
+        Path.GetFullPath(Path.Combine([Path.GetPathRoot(AppContext.BaseDirectory)!, .. parts]));
+
     private static SatVocabOptions Options() =>
         new()
         {
-            BasePath = Path.Combine("C:", "app", "api", "src", "SatVocab.Api"),
+            BasePath = Absolute("app", "api", "src", "SatVocab.Api"),
             ManagementDbPath = "../../../db/management.db",
             TemplateDbPath = "../../../db/template.db",
             UserDbDir = "../../../db/users",
@@ -16,9 +25,7 @@ public class SatVocabOptionsTests
     [Fact]
     public void ResolvesConfiguredPathsAgainstTheBaseNotTheWorkingDirectory()
     {
-        var expected = Path.GetFullPath(Path.Combine("C:", "app", "db", "management.db"));
-
-        Assert.Equal(expected, Options().Resolve("../../../db/management.db"));
+        Assert.Equal(Absolute("app", "db", "management.db"), Options().Resolve("../../../db/management.db"));
     }
 
     /// <summary>
@@ -34,21 +41,16 @@ public class SatVocabOptionsTests
     [InlineData("abc.db")]
     public void LocatesUserDatabasesByFileNameUnderTheConfiguredDirectory(string storedPath)
     {
-        var expected = Path.GetFullPath(Path.Combine("C:", "app", "db", "users", "abc.db"));
-
-        Assert.Equal(expected, Options().ResolveUserDb(storedPath));
+        Assert.Equal(Absolute("app", "db", "users", "abc.db"), Options().ResolveUserDb(storedPath));
     }
 
     [Fact]
     public void RelocatingTheDatabaseDirectoryIsOneSettingChange()
     {
         var options = Options();
-        options.UserDbDir = Path.Combine("D:", "data", "vocab");
+        options.UserDbDir = Absolute("data", "vocab");
 
-        Assert.Equal(
-            Path.GetFullPath(Path.Combine("D:", "data", "vocab", "abc.db")),
-            options.ResolveUserDb(@"db\users\abc.db")
-        );
+        Assert.Equal(Absolute("data", "vocab", "abc.db"), options.ResolveUserDb(@"db\users\abc.db"));
     }
 
     [Fact]

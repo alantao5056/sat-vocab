@@ -37,7 +37,16 @@ public sealed class SatVocabOptions
     /// database directory relocatable by changing one setting.
     /// </remarks>
     public string ResolveUserDb(string storedPath) =>
-        Path.GetFullPath(Path.Combine(UserDbDir, Path.GetFileName(storedPath)), BasePath);
+        Path.GetFullPath(Path.Combine(UserDbDir, StoredFileName(storedPath)), BasePath);
+
+    /// <summary>
+    /// The file name of a stored path, treating both separators as separators whatever
+    /// the host platform is. <see cref="Path.GetFileName(string)"/> would not: on Linux a
+    /// backslash is an ordinary character, so a path an account picked up on Windows
+    /// would come back whole and be used as a file name.
+    /// </summary>
+    private static string StoredFileName(string storedPath) =>
+        storedPath[(storedPath.LastIndexOfAny(['/', '\\']) + 1)..];
 
     public void Validate()
     {

@@ -42,7 +42,7 @@ public sealed class VocabDbFactory(SatVocabOptions options)
         if (!File.Exists(resolved))
         {
             throw new InvalidOperationException(
-                $"Vocabulary database '{Path.GetFileName(dbPath)}' was not found in '{options.Resolve(options.UserDbDir)}'. "
+                $"Vocabulary database '{Path.GetFileName(resolved)}' was not found in '{Path.GetDirectoryName(resolved)}'. "
                     + "Check SatVocab:UserDbDir points at the directory holding the per-user databases."
             );
         }
