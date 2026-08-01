@@ -90,7 +90,7 @@ jobs:
             - name: Install production deps and restart service
               run: |
                   PORT="${DEPLOY_PORT:-22}"
-                  SERVICE="${SERVICE_NAME:-sat-vocab}"
+                  SERVICE="${SERVICE_NAME:-sat-vocab-web-legacy}"
                   ssh -i ~/.ssh/deploy_key -p "$PORT" \
                       "$DEPLOY_USER@$DEPLOY_HOST" \
                       "set -e; cd '$DEPLOY_PATH/web-legacy' && npm ci --omit=dev && sudo systemctl restart '$SERVICE'"
