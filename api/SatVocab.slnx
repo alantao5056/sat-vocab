@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SatVocab.Api/SatVocab.Api.csproj" />
+    <Project Path="src/SatVocab.Contracts/SatVocab.Contracts.csproj" />
+    <Project Path="src/SatVocab.Core/SatVocab.Core.csproj" />
+    <Project Path="src/SatVocab.Data/SatVocab.Data.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SatVocab.Core.Tests/SatVocab.Core.Tests.csproj" />
+  </Folder>
+</Solution>

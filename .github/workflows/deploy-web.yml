@@ -1,0 +1,59 @@
+name: Deploy Web
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "web/**"
+            - ".github/workflows/deploy-web.yml"
+    workflow_dispatch:
+
+concurrency:
+    group: deploy-web-production
+    cancel-in-progress: false
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+
+        env:
+            DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+            DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+            DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }} # optional, defaults to 22
+            DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }} # e.g. /opt/sat-vocab
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+                  cache-dependency-path: web/package-lock.json
+
+            - name: Install dependencies
+              working-directory: web
+              run: npm ci
+
+            # The site is served from the same origin as the API, so the only build
+            # input is the path prefix — no secrets are inlined into the bundle.
+            - name: Build
+              working-directory: web
+              run: npm run build
+              env:
+                  VITE_API_BASE_URL: /api
+
+            - name: Configure SSH
+              run: |
+                  mkdir -p ~/.ssh
+                  printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+                  chmod 600 ~/.ssh/deploy_key
+                  PORT="${DEPLOY_PORT:-22}"
+                  ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+            # Static files served straight by Caddy — nothing to restart.
+            - name: Ship build to server
+              run: |
+                  PORT="${DEPLOY_PORT:-22}"
+                  rsync -az --delete -e "ssh -i ~/.ssh/deploy_key -p $PORT" \
+                      web/dist/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/web/"

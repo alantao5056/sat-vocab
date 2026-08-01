@@ -16,6 +16,13 @@ pnpm-debug.log*
 # environment variables
 .env
 .env.production
+.env.local
+
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
 
 # macOS-specific files
 .DS_Store
@@ -23,10 +30,16 @@ pnpm-debug.log*
 # jetbrains setting folder
 .idea/
 
+# visual studio local cache folder
+.vs/
+
 # misc
 tmp/
+deploy/
 
-# local databases (management, template, per-user vocab)
-db/management.db
-db/template.db
+# local databases (management, template, per-user vocab), plus the -wal/-shm sidecars
+# SQLite writes alongside them in WAL mode
+db/*.db
+db/*.db-wal
+db/*.db-shm
 db/users/

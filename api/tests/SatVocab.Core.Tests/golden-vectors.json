@@ -1,0 +1,978 @@
+﻿{
+  "sm2": [
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 0,
+        "reps": 0,
+        "due": null,
+        "seen": false,
+        "first_seen_date": null
+      },
+      "q": 0,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.7000000000000002,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-31"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 0,
+        "reps": 0,
+        "due": null,
+        "seen": false,
+        "first_seen_date": null
+      },
+      "q": 1,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.96,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-31"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 0,
+        "reps": 0,
+        "due": null,
+        "seen": false,
+        "first_seen_date": null
+      },
+      "q": 2,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.1799999999999997,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-31"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 0,
+        "reps": 0,
+        "due": null,
+        "seen": false,
+        "first_seen_date": null
+      },
+      "q": 3,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.36,
+        "interval": 1,
+        "reps": 1,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-31"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 0,
+        "reps": 0,
+        "due": null,
+        "seen": false,
+        "first_seen_date": null
+      },
+      "q": 4,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.5,
+        "interval": 1,
+        "reps": 1,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-31"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 0,
+        "reps": 0,
+        "due": null,
+        "seen": false,
+        "first_seen_date": null
+      },
+      "q": 5,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.6,
+        "interval": 1,
+        "reps": 1,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-31"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 1,
+        "reps": 1,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      },
+      "q": 0,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.7000000000000002,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 1,
+        "reps": 1,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      },
+      "q": 1,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.96,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 1,
+        "reps": 1,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      },
+      "q": 2,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.1799999999999997,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 1,
+        "reps": 1,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      },
+      "q": 3,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.36,
+        "interval": 6,
+        "reps": 2,
+        "due": "2026-08-06",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 1,
+        "reps": 1,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      },
+      "q": 4,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.5,
+        "interval": 6,
+        "reps": 2,
+        "due": "2026-08-06",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 1,
+        "reps": 1,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      },
+      "q": 5,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.6,
+        "interval": 6,
+        "reps": 2,
+        "due": "2026-08-06",
+        "seen": true,
+        "first_seen_date": "2026-07-30"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 6,
+        "reps": 2,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      },
+      "q": 0,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.7000000000000002,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 6,
+        "reps": 2,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      },
+      "q": 1,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.96,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 6,
+        "reps": 2,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      },
+      "q": 2,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.1799999999999997,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 6,
+        "reps": 2,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      },
+      "q": 3,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.36,
+        "interval": 14,
+        "reps": 3,
+        "due": "2026-08-14",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 6,
+        "reps": 2,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      },
+      "q": 4,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.5,
+        "interval": 15,
+        "reps": 3,
+        "due": "2026-08-15",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 6,
+        "reps": 2,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      },
+      "q": 5,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.6,
+        "interval": 16,
+        "reps": 3,
+        "due": "2026-08-16",
+        "seen": true,
+        "first_seen_date": "2026-07-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.36,
+        "interval": 15,
+        "reps": 3,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      },
+      "q": 0,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.56,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.36,
+        "interval": 15,
+        "reps": 3,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      },
+      "q": 1,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.8199999999999998,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.36,
+        "interval": 15,
+        "reps": 3,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      },
+      "q": 2,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.04,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.36,
+        "interval": 15,
+        "reps": 3,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      },
+      "q": 3,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.2199999999999998,
+        "interval": 33,
+        "reps": 4,
+        "due": "2026-09-02",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.36,
+        "interval": 15,
+        "reps": 3,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      },
+      "q": 4,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.36,
+        "interval": 35,
+        "reps": 4,
+        "due": "2026-09-04",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.36,
+        "interval": 15,
+        "reps": 3,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      },
+      "q": 5,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.46,
+        "interval": 37,
+        "reps": 4,
+        "due": "2026-09-06",
+        "seen": true,
+        "first_seen_date": "2026-06-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.3,
+        "interval": 250,
+        "reps": 9,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      },
+      "q": 0,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.3,
+        "interval": 250,
+        "reps": 9,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      },
+      "q": 1,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.3,
+        "interval": 250,
+        "reps": 9,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      },
+      "q": 2,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.3,
+        "interval": 250,
+        "reps": 9,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      },
+      "q": 3,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 325,
+        "reps": 10,
+        "due": "2027-06-21",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.3,
+        "interval": 250,
+        "reps": 9,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      },
+      "q": 4,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 325,
+        "reps": 10,
+        "due": "2027-06-21",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.3,
+        "interval": 250,
+        "reps": 9,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      },
+      "q": 5,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.4000000000000001,
+        "interval": 350,
+        "reps": 10,
+        "due": "2027-07-16",
+        "seen": true,
+        "first_seen_date": "2025-01-01"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.32,
+        "interval": 3,
+        "reps": 4,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      },
+      "q": 0,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.32,
+        "interval": 3,
+        "reps": 4,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      },
+      "q": 1,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.32,
+        "interval": 3,
+        "reps": 4,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      },
+      "q": 2,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.32,
+        "interval": 3,
+        "reps": 4,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      },
+      "q": 3,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 4,
+        "reps": 5,
+        "due": "2026-08-04",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.32,
+        "interval": 3,
+        "reps": 4,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      },
+      "q": 4,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.32,
+        "interval": 4,
+        "reps": 5,
+        "due": "2026-08-04",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.32,
+        "interval": 3,
+        "reps": 4,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      },
+      "q": 5,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.4200000000000002,
+        "interval": 4,
+        "reps": 5,
+        "due": "2026-08-04",
+        "seen": true,
+        "first_seen_date": "2026-05-05"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 7,
+        "reps": 5,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      },
+      "q": 0,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.7000000000000002,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 7,
+        "reps": 5,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      },
+      "q": 1,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.96,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 7,
+        "reps": 5,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      },
+      "q": 2,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.1799999999999997,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 7,
+        "reps": 5,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      },
+      "q": 3,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.36,
+        "interval": 17,
+        "reps": 6,
+        "due": "2026-08-17",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 7,
+        "reps": 5,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      },
+      "q": 4,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.5,
+        "interval": 18,
+        "reps": 6,
+        "due": "2026-08-18",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      }
+    },
+    {
+      "state": {
+        "ease": 2.5,
+        "interval": 7,
+        "reps": 5,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      },
+      "q": 5,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 2.6,
+        "interval": 18,
+        "reps": 6,
+        "due": "2026-08-18",
+        "seen": true,
+        "first_seen_date": "2026-02-02"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.5,
+        "interval": 9,
+        "reps": 6,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      },
+      "q": 0,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.5,
+        "interval": 9,
+        "reps": 6,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      },
+      "q": 1,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.5,
+        "interval": 9,
+        "reps": 6,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      },
+      "q": 2,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.3,
+        "interval": 1,
+        "reps": 0,
+        "due": "2026-08-01",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.5,
+        "interval": 9,
+        "reps": 6,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      },
+      "q": 3,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.36,
+        "interval": 12,
+        "reps": 7,
+        "due": "2026-08-12",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.5,
+        "interval": 9,
+        "reps": 6,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      },
+      "q": 4,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.5,
+        "interval": 14,
+        "reps": 7,
+        "due": "2026-08-14",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      }
+    },
+    {
+      "state": {
+        "ease": 1.5,
+        "interval": 9,
+        "reps": 6,
+        "due": "2026-07-31",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      },
+      "q": 5,
+      "today": "2026-07-31",
+      "expected": {
+        "ease": 1.6,
+        "interval": 14,
+        "reps": 7,
+        "due": "2026-08-14",
+        "seen": true,
+        "first_seen_date": "2026-03-03"
+      }
+    }
+  ],
+  "scrypt": [
+    {
+      "password": "correct horse battery staple",
+      "stored": "0123456789abcdef0123456789abcdef:b9e4c0458defb164feba9d9ffbec86e4ddffb2a590e4afa11b8a170fbd1512180c3a5eefbb59f1d53515369c1639cc3cf7f291109291b9082c04aebd75e4c8cb"
+    },
+    {
+      "password": "p@ssw0rd!",
+      "stored": "deadbeefdeadbeefdeadbeefdeadbeef:d20e6cfbe3d6fd013b1f27162abd105fd0fdd8556fa630ea23161e7b945e0eb0d7bfd1c62a3f2f7b1725e34166dbf36fa4ce49c2780137a173bf1300a5ee5420"
+    },
+    {
+      "password": "中文密码",
+      "stored": "d4339942cc5af984b13f98393bc546d6:13136d3287e98d64e5bf00520b13da0489c6c83ae226034875436c35ed82859422cfa26810046c138aa70427686051697ca84c4d8b77c2367f96fd4088dba2b8"
+    }
+  ]
+}

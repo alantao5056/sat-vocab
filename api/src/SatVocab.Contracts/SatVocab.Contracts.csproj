@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        Deliberately dependency-free: the WinUI 3 client adds a ProjectReference to this
+        and gets the wire types with nothing else attached.
+        Shared properties come from ../../Directory.Build.props.
+    -->
+
+</Project>

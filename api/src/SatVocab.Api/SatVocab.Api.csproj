@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <!-- Lets `dotnet user-secrets` hold local secrets outside the repository. -->
+        <UserSecretsId>4e2ae513-f562-4015-86d2-996f51f52d39</UserSecretsId>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\SatVocab.Data\SatVocab.Data.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+        <!--
+            Pinned ahead of what Microsoft.AspNetCore.OpenApi pulls in: its transitive
+            Microsoft.OpenApi 2.0.0 carries a known vulnerability (GHSA-v5pm-xwqc-g5wc).
+            Stay on 2.x — 3.x removes setters the OpenApi source generator still writes to.
+        -->
+        <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
+    </ItemGroup>
+
+</Project>

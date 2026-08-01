@@ -1,3 +1,13 @@
 package.json
 package-lock.json
 docs/
+
+# C# is formatted with `dotnet format`, not Prettier.
+api/src/
+api/*.props
+api/*.sln
+
+# Not formats Prettier understands.
+deploy/Caddyfile
+deploy/*.service
+*.env.example

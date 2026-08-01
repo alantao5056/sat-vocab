@@ -1,0 +1,13 @@
+<script setup lang="ts">
+defineProps<{ size?: number | string }>();
+</script>
+
+<template>
+    <svg :width="size" :height="size" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 21c-1.104 0-2 .896-2 2h4c0-1.104-.896-2-2-2z" />
+        <path
+            d="M21 4H3c-1.103 0-2 .897-2 2v13c0 1.103.897 2 2 2h18c1.103 0 2-.897 2-2V6c0-1.103-.897-2-2-2zM3 19V6h8v13H3zm18 0h-8V6h8v13z"
+        />
+        <path d="M5 8h4v2H5zm0 3h4v2H5zm10-3h4v2h-4zm0 3h4v2h-4z" />
+    </svg>
+</template>

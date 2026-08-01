@@ -1,0 +1,147 @@
+name: Deploy API
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "api/**"
+            - ".github/workflows/deploy-api.yml"
+    workflow_dispatch:
+
+# Never run two deploys at once; let an in-flight deploy finish before the next.
+concurrency:
+    group: deploy-api-production
+    cancel-in-progress: false
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+
+        env:
+            DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+            DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+            DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }} # optional, defaults to 22
+            DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }} # e.g. /opt/sat-vocab
+            API_SERVICE_NAME: ${{ secrets.API_SERVICE_NAME }} # optional, defaults to sat-vocab-api
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: "10.0.x"
+
+            # The SM-2 port and the scrypt hashing are pinned to golden vectors taken
+            # from the original TypeScript implementation. A regression here would
+            # corrupt every user's schedule or lock them out, so never deploy past it.
+            - name: Test
+              run: dotnet test api/SatVocab.slnx --configuration Release
+
+            - name: Publish
+              run: dotnet publish api/src/SatVocab.Api/SatVocab.Api.csproj --configuration Release --output publish
+
+            - name: Configure SSH
+              run: |
+                  mkdir -p ~/.ssh
+                  printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+                  chmod 600 ~/.ssh/deploy_key
+                  PORT="${DEPLOY_PORT:-22}"
+                  ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+            - name: Ship build to server
+              run: |
+                  PORT="${DEPLOY_PORT:-22}"
+                  rsync -az --delete -e "ssh -i ~/.ssh/deploy_key -p $PORT" \
+                      publish/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/api/"
+
+            # Renders /etc/sat-vocab/api.env from the repository secrets, so the server
+            # holds no hand-maintained configuration and rotating a secret is a GitHub
+            # change plus a re-run of this workflow.
+            #
+            # Secrets arrive as environment variables rather than ${{ }} interpolation:
+            # interpolation splices the value into the script before the shell parses it,
+            # so a secret containing a backtick or $(...) would execute. Referencing them
+            # as shell variables inside an expanded heredoc substitutes the value without
+            # re-parsing it.
+            - name: Compose the environment file
+              env:
+                  JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+                  MANAGEMENT_DB_PATH: ${{ secrets.MANAGEMENT_DB_PATH }}
+                  TEMPLATE_DB_PATH: ${{ secrets.TEMPLATE_DB_PATH }}
+                  USER_DB_DIR: ${{ secrets.USER_DB_DIR }}
+                  WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
+                  GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+                  GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+                  GOOGLE_REDIRECT_URI: ${{ secrets.GOOGLE_REDIRECT_URI }}
+                  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+                  DEV_EMAIL: ${{ secrets.DEV_EMAIL }}
+              run: |
+                  # Fail here rather than on the server: an empty database path or
+                  # signing key makes the API refuse to start, and by then the old
+                  # process is already gone.
+                  for name in JWT_SIGNING_KEY MANAGEMENT_DB_PATH TEMPLATE_DB_PATH USER_DB_DIR WEB_APP_URL; do
+                      if [ -z "${!name}" ]; then
+                          echo "::error::Required secret $name is empty; refusing to deploy."
+                          exit 1
+                      fi
+                  done
+
+                  # The databases live outside DEPLOY_PATH precisely so that the
+                  # `rsync --delete` above can never reach them. A relative path would
+                  # resolve against the API's content root — which is inside it.
+                  for name in MANAGEMENT_DB_PATH TEMPLATE_DB_PATH USER_DB_DIR; do
+                      case "${!name}" in
+                          /*) ;;
+                          *) echo "::error::$name must be an absolute path, got '${!name}'." ; exit 1 ;;
+                      esac
+                  done
+
+                  umask 077
+                  cat > api.env <<EOF
+                  ASPNETCORE_URLS=http://127.0.0.1:5081
+                  JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
+                  MANAGEMENT_DB_PATH=${MANAGEMENT_DB_PATH}
+                  TEMPLATE_DB_PATH=${TEMPLATE_DB_PATH}
+                  USER_DB_DIR=${USER_DB_DIR}
+                  WEB_APP_URL=${WEB_APP_URL}
+                  GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+                  GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+                  GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+                  ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+                  DEV_EMAIL=${DEV_EMAIL}
+                  # Not a secret: the cookie path as the browser sees it, which is the
+                  # /api prefix Caddy strips before the request reaches the API.
+                  Auth__RefreshCookiePath=/api/v1/auth
+                  EOF
+
+            # No sudo, by design. /etc/sat-vocab is owned by the deploy user and setgid
+            # to the service group, so this writes straight to its destination. Gating
+            # the file behind sudo would protect nothing: the step above already replaces
+            # the API's own assemblies, so this account can run whatever it likes as the
+            # service user either way. rsync renames into place, so the service never
+            # reads a half-written file.
+            - name: Install the environment file
+              run: |
+                  PORT="${DEPLOY_PORT:-22}"
+                  rsync --chmod=640 -e "ssh -i ~/.ssh/deploy_key -p $PORT" \
+                      api.env "$DEPLOY_USER@$DEPLOY_HOST:/etc/sat-vocab/api.env"
+
+            - name: Restart service
+              run: |
+                  PORT="${DEPLOY_PORT:-22}"
+                  SERVICE="${API_SERVICE_NAME:-sat-vocab-api}"
+                  ssh -i ~/.ssh/deploy_key -p "$PORT" \
+                      "$DEPLOY_USER@$DEPLOY_HOST" \
+                      "sudo systemctl restart '$SERVICE'"
+
+            - name: Smoke test
+              run: |
+                  for i in $(seq 1 20); do
+                      if curl -fsS "https://api.sat-vocab.alantao.com/v1/health" > /dev/null; then
+                          echo "API is healthy."
+                          exit 0
+                      fi
+                      sleep 3
+                  done
+                  echo "API did not become healthy after the restart." >&2
+                  exit 1

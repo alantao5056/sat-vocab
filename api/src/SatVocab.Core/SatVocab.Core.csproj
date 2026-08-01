@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <ItemGroup>
+        <ProjectReference Include="..\SatVocab.Contracts\SatVocab.Contracts.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- .NET has no built-in scrypt, and the stored hashes are scrypt (see PasswordHasher). -->
+        <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    </ItemGroup>
+
+</Project>

@@ -16,6 +16,24 @@ export function toLibsqlUrl(filePath: string): string {
     return "file:" + path.resolve(filePath);
 }
 
+/**
+ * Locate a user's vocabulary database from the path stored on their account.
+ *
+ * Only the file name is taken from `storedPath`; the directory always comes from
+ * `USER_DB_DIR`. Accounts created before this app moved into `web-legacy/` recorded a
+ * path relative to the old working directory, which no longer resolves — and the .NET
+ * API locates the same files the same way (see `SatVocabOptions.ResolveUserDb`), so
+ * both stacks agree.
+ */
+function resolveUserDbPath(storedPath: string): string {
+    const dir = import.meta.env.USER_DB_DIR;
+    if (!dir || storedPath.startsWith("file:")) return storedPath;
+    // Split on both separators: the stored value may use Windows or POSIX form
+    // depending on which machine created the account.
+    const fileName = storedPath.split(/[\\/]/).pop()!;
+    return path.join(dir, fileName);
+}
+
 // Reuse one client per database file across requests.
 const clients = new Map<string, Client>();
 // Track which database files have already had the SM-2 schema ensured.
@@ -74,7 +92,7 @@ async function ensureVocabSchema(db: Client): Promise<void> {
  * the SM-2 schema is ensured once per file.
  */
 export async function getVocabDb(dbPath: string): Promise<Client> {
-    const url = toLibsqlUrl(dbPath);
+    const url = toLibsqlUrl(resolveUserDbPath(dbPath));
     let client = clients.get(url);
     if (!client) {
         client = createClient({ url });

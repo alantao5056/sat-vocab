@@ -1,8 +1,13 @@
-name: Deploy
+# Deploys the original Astro app, which stays live until the Vue rewrite in web/
+# reaches parity. Delete this workflow (and web-legacy/) at cutover.
+name: Deploy Web (legacy Astro)
 
 on:
     push:
         branches: [main]
+        paths:
+            - "web-legacy/**"
+            - ".github/workflows/deploy-web-legacy.yml"
     workflow_dispatch:
 
 # Never run two deploys at once; let an in-flight deploy finish before the next.
@@ -18,7 +23,7 @@ jobs:
             DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
             DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
             DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }} # optional, defaults to 22
-            DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }} # e.g. /var/www/sat-vocab
+            DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }} # e.g. /opt/sat-vocab
             SERVICE_NAME: ${{ secrets.SERVICE_NAME }} # optional, defaults to sat-vocab
 
         steps:
@@ -28,8 +33,10 @@ jobs:
               with:
                   node-version: 22
                   cache: npm
+                  cache-dependency-path: web-legacy/package-lock.json
 
             - name: Install dependencies
+              working-directory: web-legacy
               run: npm ci
 
             # The app reads DB paths and Google OAuth config via import.meta.env,
@@ -37,6 +44,7 @@ jobs:
             # just on the server. Assemble .env.production from one secret per var.
             # This file is created on the ephemeral runner only and is never shipped.
             - name: Write production env (inlined into the build)
+              working-directory: web-legacy
               run: |
                   cat > .env.production <<EOF
                   MANAGEMENT_DB_PATH=${{ secrets.MANAGEMENT_DB_PATH }}
@@ -49,6 +57,7 @@ jobs:
                   EOF
 
             - name: Build
+              working-directory: web-legacy
               run: npm run build
 
             - name: Configure SSH
@@ -60,18 +69,19 @@ jobs:
                   ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
             - name: Deploy build to server
+              working-directory: web-legacy
               run: |
                   PORT="${DEPLOY_PORT:-22}"
                   SSH="ssh -i ~/.ssh/deploy_key -p $PORT"
 
                   # Replace the built output atomically-ish; --delete removes stale assets.
                   rsync -az --delete -e "$SSH" \
-                      dist/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/dist/"
+                      dist/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/web-legacy/dist/"
 
                   # Ship manifests so the host can install production deps.
                   rsync -az -e "$SSH" \
                       package.json package-lock.json \
-                      "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+                      "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/web-legacy/"
 
             - name: Install production deps and restart service
               run: |
@@ -79,4 +89,4 @@ jobs:
                   SERVICE="${SERVICE_NAME:-sat-vocab}"
                   ssh -i ~/.ssh/deploy_key -p "$PORT" \
                       "$DEPLOY_USER@$DEPLOY_HOST" \
-                      "set -e; cd '$DEPLOY_PATH' && npm ci --omit=dev && sudo systemctl restart '$SERVICE'"
+                      "set -e; cd '$DEPLOY_PATH/web-legacy' && npm ci --omit=dev && sudo systemctl restart '$SERVICE'"

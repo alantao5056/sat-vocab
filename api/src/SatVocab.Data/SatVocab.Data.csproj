@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <ItemGroup>
+        <ProjectReference Include="..\SatVocab.Core\SatVocab.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+        <!--
+            Pinned ahead of what Microsoft.Data.Sqlite pulls in: its transitive
+            SQLitePCLRaw 2.1.x carries a known vulnerability (GHSA-2m69-gcr7-jv3q).
+            Drop this override once the Microsoft.Data.Sqlite dependency catches up.
+        -->
+        <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    </ItemGroup>
+
+</Project>

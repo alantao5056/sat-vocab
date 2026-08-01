@@ -4,65 +4,117 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-SAT Vocab is a multi-user web app (Astro + LibSQL/SQLite) for memorizing ~3,000 SAT words.
-Each session shows **up to a configurable number of cards** (the per-user "words per round"
-setting, default 10), graded on a six-point recall scale (0–5). Grades drive a
-**canonical SM-2** spaced-repetition schedule (`src/lib/sm2.ts`) that decides when each word is
-next due. A configurable daily new-word cap controls how fast new words are introduced.
+SAT Vocab is a spaced-repetition app for ~3,000 SAT words, graded on a six-point recall
+scale (0–5) and scheduled by a **canonical SM-2** implementation.
+
+The repository is mid-migration from a single Astro server that talked straight to SQLite
+into a **REST API with multiple clients**, so a WinUI 3 app can ship to the Microsoft
+Store. Read `README.md` first — it holds the architecture, the API contract, and the
+phase plan. In short:
+
+```
+api/          .NET 10 REST API — the only thing that touches a database
+web/          Vue 3 SPA (static files), a plain API consumer
+web-legacy/   TEMPORARY: the original Astro app, still serving production
+desktop/      placeholder for the WinUI 3 client
+```
+
+**`web-legacy/` is live production.** Do not break it, and do not add features to it —
+new work goes in `api/` and `web/`. It disappears at cutover.
 
 ## Commands
 
 ```bash
-npm run dev          # Dev server at http://localhost:4321
-npm run build        # Production build (runs with --remote against ASTRO_DB_REMOTE_URL)
-npm run start        # Run the built standalone Node server (dist/server/entry.mjs)
-npm run preview      # Preview a build locally
-npm run format -- path/to/file   # Prettier-format a single file (do this after editing)
-npm run format:all   # Prettier-format everything
+# API
+cd api
+dotnet run --project src/SatVocab.Api   # http://localhost:5080
+dotnet test                             # golden-vector tests — see below
+dotnet format                           # C# formatting
+
+# Web (Vue)
+cd web
+npm run dev            # http://localhost:5173, proxies /api to the API
+npm run build          # type-check (vue-tsc) then build
+npm run format -- <path>
+
+# Legacy Astro app
+cd web-legacy
+npm run dev
+npm run format -- <path>
 ```
 
-There is no test suite. Type-check with `npm run astro check`.
+**There is no `.env` file for the API — .NET does not read them.** Configuration comes
+from `appsettings.json`, then `appsettings.Development.json` (already wired to the
+repository's `db/` folder, so `dotnet run` works untouched), then user secrets, then
+environment variables. Production supplies those environment variables through the
+systemd `EnvironmentFile` at `/etc/sat-vocab/api.env`; there is no `.env.example` for the
+API, because there is nothing that would read it. `README.md` lists the names. Relative
+database paths resolve against the **content root**, never the working directory — see
+`SatVocabOptions.Resolve`.
 
-After editing any file, ALWAYS run `npm run format -- <path>` — Prettier config uses 4-space indent (see `.prettierrc`).
+After editing any TypeScript/Vue/Astro file, ALWAYS run `npm run format -- <path>` from
+that package's directory — Prettier is configured with 4-space indent (`.prettierrc` at
+the repository root). C# is formatted with `dotnet format`, not Prettier.
 
-## Environment
+## Things that will silently break users
 
-Required env vars (see `.env.example`):
+Three pieces of behaviour were inherited from the Astro app and are load-bearing. Golden
+vectors in `api/tests/SatVocab.Core.Tests/` pin them; never "clean them up".
 
-- `MANAGEMENT_DB_PATH` — SQLite file holding the `User` / `UserSession` tables (`src/lib/management-db.ts`).
-- `TEMPLATE_DB_PATH` — the template vocabulary DB copied for each new user (built by `tools/csv-importer`).
-- `USER_DB_DIR` — directory where each user's copy of the vocabulary DB lives (`<userId>.db`).
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` — optional; enable "Continue with Google".
+1. **SM-2 arithmetic** (`api/src/SatVocab.Core/Sm2.cs`). JavaScript's `Math.round` is
+   round-half-up; .NET's default is banker's rounding. The port must use
+   `MidpointRounding.AwayFromZero`. The floating-point ease is asserted exactly, because
+   it compounds over every future review.
+2. **scrypt password hashing** (`api/src/SatVocab.Core/PasswordHasher.cs`). Node's
+   `crypto.scrypt` coerces a string salt with UTF-8, so the actual salt is the 32 ASCII
+   bytes of the hex string, not the 16 bytes it encodes. Parameters are Node's defaults
+   (N=16384, r=8, p=1, 64-byte key). Change any of this and every existing account is
+   locked out.
+3. **Per-user database schema migration** (`api/src/SatVocab.Data/VocabDbFactory.cs`).
+   Older user databases are migrated forward on first access; `shuffle_order` must be
+   seeded with random values when the column is first added, or new-word order collapses
+   to alphabetical.
 
-## Architecture
+Regenerate the vectors with `node api/tests/gen-golden-vectors.mjs` only if you have a
+deliberate reason — it runs the original TypeScript, which is the reference.
 
-**SSR Astro** (`output: "server"`, Node standalone adapter). All pages are server-rendered `.astro` files that handle their own `POST` requests inline in the frontmatter — there are no separate API routes.
+## Architecture notes
 
-**Auth** (`src/middleware.ts`, `src/lib/auth.ts`, `src/lib/management-db.ts`): email/password (scrypt) or Google OAuth. A session token cookie (`auth_token`) resolves to a `User` via the management DB; middleware sets `Astro.locals.user` and `Astro.locals.dbPath`. Public routes: `/login`, `/register`, `/auth/google*`. On registration, `provisionUserDb` copies `TEMPLATE_DB_PATH` to a new per-user file.
+**API** (`api/`, .NET 10 minimal APIs, no EF Core). Layers: `Contracts` (DTOs, referenced
+by the future desktop client) → `Core` (pure logic) → `Data` (Microsoft.Data.Sqlite) →
+`Api` (endpoints). Endpoints are grouped by resource in `Endpoints/*.cs`.
 
-**Databases**: two layers of plain LibSQL/SQLite (no Astro DB).
+**Auth**. 15-minute HMAC-signed JWT access tokens; opaque refresh tokens stored as
+SHA-256 hashes, rotated on every use, with replay revoking the whole family. The
+`X-Client: web` header switches refresh-token delivery from the response body to an
+httpOnly cookie — this is the _only_ place the two client types differ, and it lives in
+`Auth/ClientSession.cs`. Google sign-in is web-only by decision.
 
-- **Management DB** (`src/lib/management-db.ts`): `User`, `UserSession`.
-- **Per-user vocabulary DB** (`src/lib/vocab-db.ts`, one file per user): the `Word` table plus a `Meta` key/value table (stores the daily new-word cap, the words-per-round size, and the temporary "Learn 10 more" bonus). `getVocabDb()` caches one client per file and runs `ensureVocabSchema` once to idempotently add the SM-2 columns/indexes — so older user DBs migrate forward on first access.
-- `Word` SM-2 state: `ease` (float, init 2.5, floor 1.3), `interval` (days), `reps`, `due` (local `YYYY-MM-DD`, null until seen), `seen` (0/1), `first_seen_date` (the day a word was first reviewed — used to count new words introduced today), `shuffle_order` (stable per-word random key for shuffled new-word introduction).
+**Two databases, both plain SQLite.** A shared management database (`User`,
+`RefreshToken`, plus the legacy `UserSession` the Astro app still reads) and one
+vocabulary database per user, copied from a template at registration. `VocabDbFactory`
+caches per-path connection strings and enables WAL — the Node client never did, and
+concurrent writes need it.
 
-**SM-2 logic** (`src/lib/sm2.ts`): pure functions. `gradeWord(state, q, today)` updates ease on every grade, resets to a 1-day interval on a lapse (q < 3), else steps 1 → 6 → `round(interval * ease)`. `GRADES` defines the six buttons. Dates are local `YYYY-MM-DD` strings (compare with `<=`); no maximum interval and no test-date deadline.
+**Time zones.** Every scheduling decision hangs off the user's local "today", resolved by
+`Core/UserClock.cs` from an IANA id stored on the account. A null time zone falls back to
+the server's zone, preserving pre-migration behaviour. Never call `DateTime.Today`.
 
-**Study flow** (`src/pages/study.astro`, the core file):
+**Web** (`web/`). Vue 3 `<script setup>` + Vite + vue-router + Pinia; no component
+library — the CSS was carried over from the Astro pages. `api/client.ts` is the only
+place that talks HTTP: the access token lives in memory only, and a 401 triggers one
+silent refresh-and-retry, so views never handle expiry. The router guard calls
+`auth.restore()` on cold load, which recovers the session from the refresh cookie.
 
-- Queue is built **fresh every request** (filter + sort, not a stored list): take up to the per-user round size (`words_per_round` in `Meta`, default `DEFAULT_WORDS_PER_ROUND`=12, one of the fixed `WORDS_PER_ROUND_OPTIONS`) `seen` words with `due <= today` ordered by `due` ascending, then top up with never-seen words (shuffled via `shuffle_order`) without exceeding today's remaining new-word cap. Reviews always come before new words. The study grid computes its column/row split client-side to spread the cards across the whole viewport.
-- Daily new-word cap = persistent setting (`new_words_per_day` in `Meta`, default `DEFAULT_NEW_WORDS_PER_DAY`=30) plus any same-day "Learn 10 more" bonus. It caps **new** words only, never due reviews.
-- When the queue is empty, the page shows a "You're all caught up" screen; if the stop was caused by the cap (not an exhausted deck) it offers **Learn 10 more** (POST `action=learn_more` raises today's cap by `LEARN_MORE_INCREMENT`).
-- On grade submission (POST `ratings` = `[{id, q}]`): runs `gradeWord` per word, writes the new SM-2 state, and redirects back to `/study`.
-- Client-side JS handles the detail modal, the per-card 0–5 grade buttons, the "mark all ungraded with one grade" warning modal, and serializing grades into the hidden form.
-
-**Pages**: `index.astro` (redirects to `/study`), `login.astro`, `register.astro`, `study.astro`, `status.astro` (Mastered/Learning word board), `settings.ts` (POST-only endpoint that persists the navbar setting changes and redirects back), plus `auth/google*` and `logout`. The header (`src/components/Header.astro`) hosts the nav links and the per-user settings controls (new-words-per-day and words-per-round preset buttons that POST to `/settings`). Pages pass props like `headerSubtitle`/`showHeader`/`user` into `src/layouts/Layout.astro`.
-
-## Seeding & data import
-
-`tools/csv-importer/` is a **standalone** Node script (its own `package.json` / `node_modules`) that converts a CSV of words into the template vocabulary `.db` (the `Word` table with its SM-2 columns + an empty `Meta` table) and optionally a 50-word JSON sample. Run `npm install` then `npm start` inside that folder; defaults read `tmp/words.csv` and write `tmp/words.db`. Copy the result to your configured `TEMPLATE_DB_PATH` (e.g. `db/template.db`).
+**Round construction** (`api/src/SatVocab.Data/StudyRepository.cs`). Built fresh on every
+request — a filter and a sort, never a stored list. Due reviews first (capped at the
+user's round size), then never-seen words in shuffled order within the daily new-word
+cap. The cap never withholds reviews. This logic used to be duplicated in the frontmatter
+of `study.astro` and `passage.astro`.
 
 ## Conventions
 
 - All code, comments, and docs in English.
-- TypeScript strict (`astro/tsconfigs/strict`).
+- TypeScript strict; C# nullable enabled.
+- Clients never hard-code the grade scale or the settings option sets — they come from
+  `GET /v1/settings`.
