@@ -290,6 +290,12 @@ file on the server only holds until the next deploy. The workflow refuses to pro
 required secret is empty or if a database path is relative, because both faults would
 only surface as an API that will not start — after the old process is already gone.
 
+The API is published **self-contained for `linux-arm64`**, so the server has no .NET
+installed and never needs one — a runtime upgrade is a change to `deploy-api.yml`, not to
+the machine. The published apphost is the `ExecStart` target directly. Two consequences:
+the RID has to match the VPS architecture, and `InvariantGlobalization=false` still
+resolves IANA time zone ids through the system ICU, so `libicu` must be present.
+
 GitHub Actions deploys each part independently, triggered by path: `deploy-api.yml`
 (tests, publishes, restarts the service, waits for `/v1/health`), `deploy-web.yml`
 (builds and rsyncs static files — nothing to restart), and `deploy-web-legacy.yml` (the

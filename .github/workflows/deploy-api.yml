@@ -37,8 +37,17 @@ jobs:
             - name: Test
               run: dotnet test api/SatVocab.slnx --configuration Release
 
+            # Self-contained: the server has no .NET installed, and keeping it that way
+            # means a runtime upgrade is a change here rather than on the machine. The
+            # output is an executable apphost plus its own runtime, so the unit invokes
+            # ./SatVocab.Api directly instead of `dotnet SatVocab.Api.dll`.
             - name: Publish
-              run: dotnet publish api/src/SatVocab.Api/SatVocab.Api.csproj --configuration Release --output publish
+              run: |
+                  dotnet publish api/src/SatVocab.Api/SatVocab.Api.csproj \
+                      --configuration Release \
+                      --runtime linux-arm64 \
+                      --self-contained true \
+                      --output publish
 
             - name: Configure SSH
               run: |
