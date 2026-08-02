@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using SatVocab.Api.Auth;
 using SatVocab.Api.Endpoints;
+using SatVocab.Api.Passage;
 using SatVocab.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,9 +31,13 @@ googleOptions.ClientId = Fallback(googleOptions.ClientId, builder.Configuration[
 googleOptions.ClientSecret = Fallback(googleOptions.ClientSecret, builder.Configuration["GOOGLE_CLIENT_SECRET"]);
 googleOptions.RedirectUri = Fallback(googleOptions.RedirectUri, builder.Configuration["GOOGLE_REDIRECT_URI"]);
 
+var anthropicOptions = builder.Configuration.GetSection("Anthropic").Get<AnthropicOptions>() ?? new AnthropicOptions();
+anthropicOptions.ApiKey = Fallback(anthropicOptions.ApiKey, builder.Configuration["ANTHROPIC_API_KEY"]);
+
 builder.Services.AddSingleton(satVocabOptions);
 builder.Services.AddSingleton(authOptions);
 builder.Services.AddSingleton(googleOptions);
+builder.Services.AddSingleton(anthropicOptions);
 builder.Services.AddSingleton(TimeProvider.System);
 
 // --- Data and domain services ----------------------------------------------
@@ -41,6 +46,8 @@ builder.Services.AddSingleton<VocabDbFactory>();
 builder.Services.AddSingleton<StudyRepository>();
 builder.Services.AddSingleton<SettingsRepository>();
 builder.Services.AddSingleton<ProgressRepository>();
+builder.Services.AddSingleton<PassageRepository>();
+builder.Services.AddSingleton<PassageGenerator>();
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddHttpClient<GoogleOAuthService>();
 builder.Services.AddHttpContextAccessor();
@@ -117,6 +124,7 @@ app.MapAuthEndpoints();
 app.MapStudyEndpoints();
 app.MapSettingsEndpoints();
 app.MapProgressEndpoints();
+app.MapPassageEndpoints();
 
 // The OpenAPI document is the contract the desktop client will be generated from.
 app.MapOpenApi();

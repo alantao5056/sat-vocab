@@ -203,6 +203,18 @@ check(
 const badZone = await call("/v1/settings", { method: "PUT", token, body: { timezone: "Mars/Olympus_Mons" } });
 check("unknown timezone rejected", badZone.status === 400, String(badZone.status));
 
+// --- passage ----------------------------------------------------------------
+// Generation itself is not exercised here: it costs a real API call, and the
+// account's daily quota is only three.
+const passage = await call("/v1/passage", { token });
+check("passage returns the round", Array.isArray(passage.json?.queue?.words), passage.text.slice(0, 200));
+check("nothing cached for a fresh round", passage.json?.segments === null, JSON.stringify(passage.json?.segments));
+check("passage reports the daily quota", passage.json?.generationsLimit === 3, String(passage.json?.generationsLimit));
+check("no generations used yet", passage.json?.generationsUsed === 0, String(passage.json?.generationsUsed));
+
+const passageNoAuth = await call("/v1/passage");
+check("passage requires auth", passageNoAuth.status === 401, String(passageNoAuth.status));
+
 // --- refresh rotation -------------------------------------------------------
 const refreshed = await call("/v1/auth/refresh", {
     method: "POST",
@@ -267,6 +279,7 @@ const openapi = await call("/openapi/v1.json");
 const paths = Object.keys(openapi.json?.paths ?? {});
 check("openapi document is served", openapi.status === 200, String(openapi.status));
 check("openapi lists the study endpoints", paths.includes("/v1/study/queue"), JSON.stringify(paths));
+check("openapi lists the passage endpoints", paths.includes("/v1/passage/generate"), JSON.stringify(paths));
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);

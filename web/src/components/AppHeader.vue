@@ -27,6 +27,7 @@ async function signOut() {
             </RouterLink>
             <nav class="nav">
                 <RouterLink to="/study" class="nav-link">Study</RouterLink>
+                <RouterLink to="/passage" class="nav-link">Passage</RouterLink>
                 <RouterLink to="/progress" class="nav-link">Progress</RouterLink>
             </nav>
 

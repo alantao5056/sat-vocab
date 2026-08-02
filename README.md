@@ -58,10 +58,11 @@ its rough edges only surfacing once the desktop work starts.
 settings and progress endpoints; the Vue rewrite of every screen except passage mode.
 The Astro app keeps serving production until the Vue app is verified.
 
-**Phase 2 — passage mode.** Move `web-legacy/src/lib/passage.ts` (Anthropic-generated
-reading passages built from the current round, plus the per-user daily quota) behind
-`GET /v1/passage` and `POST /v1/passage/generate`, then build the screen in Vue. The
-`Meta` keys the cache uses are already carried forward by the API.
+**Phase 2 — passage mode (done).** Anthropic-generated reading passages built from the
+current round, plus the per-user daily quota, now live behind `GET /v1/passage` and
+`POST /v1/passage/generate`, with the screen rebuilt in Vue. Both apps read and write the
+same `Meta` cache keys, so a passage generated in one shows up in the other for as long as
+`web-legacy/` is still serving.
 
 **Phase 3 — the desktop app.** WinUI 3 against the same contract. See
 [`desktop/README.md`](desktop/README.md) for the decisions already locked in.
@@ -111,6 +112,8 @@ through Google set one via `PUT /v1/me/password`.
 | `PUT`  | `/v1/settings`             | Update new-words-per-day, words-per-round, time zone       |
 | `GET`  | `/v1/progress`             | Bucket counts and the mastered percentage                  |
 | `GET`  | `/v1/progress/words`       | One bucket's words, paged                                  |
+| `GET`  | `/v1/passage`              | The round, its cached passage, and today's generation quota |
+| `POST` | `/v1/passage/generate`     | Write a new passage for the current round                  |
 | `GET`  | `/v1/health`               | Liveness                                                   |
 
 Errors are RFC 9457 problem details, so every client parses failures the same way.
@@ -325,6 +328,6 @@ must not run against production data at the same time.
 | `GOOGLE_CLIENT_SECRET`    | API     | Optional                                                |
 | `GOOGLE_REDIRECT_URI`     | API     | Must point at the **web** origin, not the api subdomain |
 | `DEV_EMAIL`               | API     | Account exempt from usage limits                        |
-| `ANTHROPIC_API_KEY`       | API     | Phase 2 — passage generation                            |
+| `ANTHROPIC_API_KEY`       | API     | Optional; enables passage generation                    |
 | `Auth__RefreshCookiePath` | API     | Cookie path as the browser sees it (`/api/v1/auth`)     |
 | `VITE_API_BASE_URL`       | Web     | Where the API lives; `/api` for the standard deployment |

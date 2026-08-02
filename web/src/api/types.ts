@@ -41,6 +41,26 @@ export interface StudyQueue {
     wordsPerRound: number;
 }
 
+/**
+ * One run of passage text: a vocabulary word when `wordId` is set, ordinary prose otherwise.
+ * The API always sends the key, so prose arrives as an explicit null rather than absent.
+ */
+export interface PassageSegment {
+    text: string;
+    wordId: number | null;
+}
+
+export interface Passage {
+    /** The round the passage is built from — the same shape `/v1/study/queue` returns. */
+    queue: StudyQueue;
+    /** Null when nothing is cached for this round, which is the cue to offer generation. */
+    segments: PassageSegment[] | null;
+    error: string | null;
+    generationsUsed: number;
+    /** Null when the account is exempt from the daily quota. */
+    generationsLimit: number | null;
+}
+
 export interface Grade {
     q: number;
     label: string;
