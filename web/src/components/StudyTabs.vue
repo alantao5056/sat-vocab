@@ -60,7 +60,9 @@ async function onKeydown(event: KeyboardEvent) {
    right up to the edge. `overflow: hidden` lets the container clip that fill to its own
    radius, which keeps the corners nested without a second radius to hold in sync. */
 .tabs {
-    display: inline-flex;
+    display: flex;
+    /* Fills whatever row it is placed in; the row is what caps the width. */
+    width: 100%;
     /* The track carries the page's own grey, so only the active segment lifts off it. */
     background-color: var(--bg-light);
     border: 1.5px solid var(--border-color);
@@ -83,6 +85,8 @@ async function onKeydown(event: KeyboardEvent) {
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-gray);
+    /* Equal halves of the track, whatever the labels measure. */
+    flex: 1;
     cursor: pointer;
     white-space: nowrap;
     -webkit-tap-highlight-color: transparent;
@@ -116,15 +120,9 @@ async function onKeydown(event: KeyboardEvent) {
     background-color: var(--card-bg);
 }
 
-/* Full width with comfortable tap targets on a phone. */
+/* Comfortable tap targets on a phone. */
 @media (max-width: 640px) {
-    .tabs {
-        display: flex;
-        width: 100%;
-    }
-
     .tab {
-        flex: 1;
         min-height: 2.5rem;
     }
 }

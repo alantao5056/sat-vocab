@@ -271,16 +271,22 @@ main {
     flex-direction: column;
 }
 
+/* Tabs and Submit are centred and capped at the mobile breakpoint, so they stay a
+   comfortable width on a desktop instead of stretching the full window. */
 .tab-row {
     flex-shrink: 0;
     display: flex;
     justify-content: center;
-    margin-bottom: 0.75rem;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto 0.75rem;
 }
 
 .submit-bar {
     flex-shrink: 0;
-    margin-top: 0.75rem;
+    width: 100%;
+    max-width: 480px;
+    margin: 0.75rem auto 0;
     /* Scrolled to the end the button lands on the viewport edge — keep it clear of the iOS
        home indicator there. */
     padding-bottom: env(safe-area-inset-bottom, 0px);
