@@ -3,7 +3,7 @@ import { ref, watch } from "vue";
 import GradeList from "./GradeList.vue";
 import type { Grade } from "@/api/types";
 
-/** Offers to grade every remaining card at once, rather than blocking submission. */
+/** Offers to grade every remaining word at once, rather than blocking submission. */
 const props = defineProps<{ open: boolean; ungradedCount: number; grades: Grade[] }>();
 const emit = defineEmits<{ confirm: [q: number]; cancel: [] }>();
 
@@ -24,11 +24,11 @@ function confirm() {
 <template>
     <div class="modal-overlay" :class="{ active: open }" @click.self="$emit('cancel')">
         <div class="modal-content">
-            <h2 class="modal-title">Ungraded Cards</h2>
+            <h2 class="modal-title">Ungraded Words</h2>
 
             <div class="modal-section">
                 <p class="modal-text">
-                    You have <strong>{{ ungradedCount }}</strong> cards that aren't graded yet. Do you want to mark them
+                    You have <strong>{{ ungradedCount }}</strong> words that aren't graded yet. Do you want to mark them
                     all with the same grade?
                 </p>
             </div>
