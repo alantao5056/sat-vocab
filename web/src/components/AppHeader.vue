@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useRouter } from "vue-router";
+import { computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import AppLogo from "./AppLogo.vue";
 import IconSettings from "./IconSettings.vue";
 import IconLogout from "./IconLogout.vue";
@@ -9,6 +10,11 @@ defineProps<{ subtitle?: string }>();
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
+
+// `/passages/:id` is a flat sibling of `/passages`, not a nested child, so vue-router's
+// inclusive active match never reaches the list link. Mark it active by route name.
+const passagesActive = computed(() => route.name === "passages" || route.name === "passage-detail");
 
 async function signOut() {
     await auth.logout();
@@ -28,7 +34,9 @@ async function signOut() {
             <nav class="nav">
                 <RouterLink to="/study" class="nav-link">Study</RouterLink>
                 <RouterLink to="/progress" class="nav-link">Progress</RouterLink>
-                <RouterLink to="/passages" class="nav-link">Passages</RouterLink>
+                <RouterLink to="/passages" class="nav-link" :class="{ 'is-active': passagesActive }"
+                    >Passages</RouterLink
+                >
             </nav>
 
             <div v-if="auth.user" class="user-menu">
@@ -105,7 +113,8 @@ h1 {
     background-color: var(--bg-light);
 }
 
-.nav-link.router-link-active {
+.nav-link.router-link-active,
+.nav-link.is-active {
     color: var(--primary-blue);
     background-color: #eef2ff;
 }
