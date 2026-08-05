@@ -20,13 +20,46 @@ public sealed record PassageSegmentResponse(string Text, long? WordId);
 /// The cached passage, or null when nothing is cached for this exact set of words — which
 /// is the client's cue to offer the generate button.
 /// </param>
+/// <param name="Title">
+/// The cached passage's title, or null — both when there is no passage and when the cached
+/// one predates titles or was written by the legacy Astro app.
+/// </param>
 /// <param name="Error">The last generation failure, or null. Cleared by a successful generation.</param>
 /// <param name="GenerationsUsed">Generations attempted today, counting failures.</param>
 /// <param name="GenerationsLimit">Generations allowed per day, or null when the account is exempt.</param>
 public sealed record PassageResponse(
     StudyQueueResponse Queue,
     IReadOnlyList<PassageSegmentResponse>? Segments,
+    string? Title,
     string? Error,
     int GenerationsUsed,
     int? GenerationsLimit
+);
+
+/// <summary>One row of the saved-passage list: enough to render it, and nothing more.</summary>
+/// <param name="CreatedDate">The user's local date the passage was generated, <c>YYYY-MM-DD</c>.</param>
+public sealed record PassageSummaryResponse(long Id, string Title, string CreatedDate);
+
+/// <summary>A page of saved passages, newest first.</summary>
+public sealed record PassageListResponse(
+    int Total,
+    int Offset,
+    int Limit,
+    IReadOnlyList<PassageSummaryResponse> Passages
+);
+
+/// <summary>
+/// One saved passage, ready to read and grade. Unlike <see cref="PassageResponse"/> this
+/// carries no round and no quota: a saved passage is history, not the current session.
+/// </summary>
+/// <param name="Words">
+/// The words the passage was written from, in the order they were given to the model, with
+/// their current definitions. Clients grade against exactly this list.
+/// </param>
+public sealed record SavedPassageResponse(
+    long Id,
+    string Title,
+    string CreatedDate,
+    IReadOnlyList<PassageSegmentResponse> Segments,
+    IReadOnlyList<QueueWordResponse> Words
 );

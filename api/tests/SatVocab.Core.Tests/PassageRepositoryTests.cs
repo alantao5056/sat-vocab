@@ -71,6 +71,7 @@ public class PassageRepositoryTests : IDisposable
             DbName,
             [7, 9],
             [new PassageSegmentResponse("The ", null), new PassageSegmentResponse("candor", 7)],
+            title: null,
             CancellationToken.None
         );
 
@@ -80,17 +81,46 @@ public class PassageRepositoryTests : IDisposable
         );
     }
 
+    /// <summary>
+    /// Titles came later than the shared cache, so they are appended rather than woven in:
+    /// the Astro app ignores the extra key, and a titleless passage still serializes to
+    /// exactly the JSON above.
+    /// </summary>
+    [Fact]
+    public async Task AppendsTheTitleWithoutDisturbingTheSharedShape()
+    {
+        var repository = NewRepository();
+
+        await repository.SaveAsync(
+            DbName,
+            [7],
+            [new PassageSegmentResponse("candor", 7)],
+            "A Question of Candor",
+            CancellationToken.None
+        );
+
+        Assert.Equal(
+            """{"wordIds":[7],"segments":[{"text":"candor","wordId":7}],"title":"A Question of Candor"}""",
+            ReadMeta("current_passage")
+        );
+
+        var cached = await repository.GetCachedAsync(DbName, [7], CancellationToken.None);
+        Assert.Equal("A Question of Candor", cached?.Title);
+    }
+
     [Fact]
     public async Task ReadsAPassageWrittenByTheAstroApp()
     {
         var repository = NewRepository();
         WriteMeta("current_passage", """{"wordIds":[7,9],"segments":[{"text":"An "},{"text":"indolent","wordId":9}]}""");
 
-        var segments = await repository.GetCachedAsync(DbName, [9, 7], CancellationToken.None);
+        var cached = await repository.GetCachedAsync(DbName, [9, 7], CancellationToken.None);
 
-        Assert.NotNull(segments);
-        Assert.Equal(new PassageSegmentResponse("An ", null), segments[0]);
-        Assert.Equal(new PassageSegmentResponse("indolent", 9), segments[1]);
+        Assert.NotNull(cached);
+        Assert.Equal(new PassageSegmentResponse("An ", null), cached.Value.Segments[0]);
+        Assert.Equal(new PassageSegmentResponse("indolent", 9), cached.Value.Segments[1]);
+        // Written before titles existed, so there is nothing to show as a heading.
+        Assert.Null(cached.Value.Title);
     }
 
     /// <summary>The round changing is what retires a cached passage; order must not matter.</summary>
@@ -102,6 +132,7 @@ public class PassageRepositoryTests : IDisposable
             DbName,
             [1, 2],
             [new PassageSegmentResponse("text", null)],
+            title: null,
             CancellationToken.None
         );
 
@@ -126,7 +157,7 @@ public class PassageRepositoryTests : IDisposable
         var repository = NewRepository();
         await repository.SetErrorAsync(DbName, "The model returned an empty passage.", CancellationToken.None);
 
-        await repository.SaveAsync(DbName, [1], [new PassageSegmentResponse("t", 1)], CancellationToken.None);
+        await repository.SaveAsync(DbName, [1], [new PassageSegmentResponse("t", 1)], "Title", CancellationToken.None);
 
         Assert.Null(await repository.GetErrorAsync(DbName, CancellationToken.None));
     }
@@ -143,6 +174,92 @@ public class PassageRepositoryTests : IDisposable
 
         Assert.Equal(2, await repository.GetGenerationsTodayAsync(DbName, today, CancellationToken.None));
         Assert.Equal(0, await repository.GetGenerationsTodayAsync(DbName, today.AddDays(1), CancellationToken.None));
+    }
+
+    /// <summary>
+    /// The history table does not exist on a database the Astro app created — the fixture
+    /// builds exactly such a file — so this also proves the schema migration adds it.
+    /// </summary>
+    [Fact]
+    public async Task SavesAndReadsBackAPassageFromHistory()
+    {
+        var repository = NewRepository();
+        var today = new DateOnly(2026, 8, 4);
+
+        var id = await repository.AddAsync(
+            DbName,
+            "A Question of Candor",
+            today,
+            [7, 9],
+            [new PassageSegmentResponse("The ", null), new PassageSegmentResponse("candor", 7)],
+            CancellationToken.None
+        );
+
+        var saved = await repository.GetByIdAsync(DbName, id, CancellationToken.None);
+
+        Assert.NotNull(saved);
+        Assert.Equal("A Question of Candor", saved.Title);
+        Assert.Equal("2026-08-04", saved.CreatedDate);
+        Assert.Equal([7L, 9L], saved.WordIds);
+        Assert.Equal(new PassageSegmentResponse("candor", 7), saved.Segments[1]);
+    }
+
+    [Fact]
+    public async Task UnknownPassageIdReadsAsMissing()
+    {
+        var repository = NewRepository();
+        Assert.Null(await repository.GetByIdAsync(DbName, 404, CancellationToken.None));
+    }
+
+    /// <summary>Newest first, and the total counts the whole history rather than the page.</summary>
+    [Fact]
+    public async Task ListsNewestFirstAndPages()
+    {
+        var repository = NewRepository();
+        var today = new DateOnly(2026, 8, 4);
+
+        for (var i = 1; i <= 3; i++)
+        {
+            await repository.AddAsync(
+                DbName,
+                $"Passage {i}",
+                today,
+                [i],
+                [new PassageSegmentResponse("t", i)],
+                CancellationToken.None
+            );
+        }
+
+        var first = await repository.ListAsync(DbName, offset: 0, limit: 2, CancellationToken.None);
+        Assert.Equal(3, first.Total);
+        Assert.Equal(["Passage 3", "Passage 2"], first.Passages.Select(p => p.Title));
+
+        var second = await repository.ListAsync(DbName, offset: 2, limit: 2, CancellationToken.None);
+        Assert.Equal(3, second.Total);
+        Assert.Equal(["Passage 1"], second.Passages.Select(p => p.Title));
+    }
+
+    /// <summary>
+    /// History outlives the cache: generating again, or grading the round, must not take a
+    /// saved passage with it.
+    /// </summary>
+    [Fact]
+    public async Task HistorySurvivesTheCacheBeingReplaced()
+    {
+        var repository = NewRepository();
+        var today = new DateOnly(2026, 8, 4);
+
+        var id = await repository.AddAsync(
+            DbName,
+            "Kept",
+            today,
+            [1],
+            [new PassageSegmentResponse("t", 1)],
+            CancellationToken.None
+        );
+        await repository.SaveAsync(DbName, [2], [new PassageSegmentResponse("u", 2)], "Newer", CancellationToken.None);
+
+        Assert.NotNull(await repository.GetByIdAsync(DbName, id, CancellationToken.None));
     }
 
     public void Dispose()

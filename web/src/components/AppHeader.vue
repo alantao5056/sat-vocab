@@ -28,6 +28,7 @@ async function signOut() {
             <nav class="nav">
                 <RouterLink to="/study" class="nav-link">Study</RouterLink>
                 <RouterLink to="/progress" class="nav-link">Progress</RouterLink>
+                <RouterLink to="/passages" class="nav-link">Passages</RouterLink>
             </nav>
 
             <div v-if="auth.user" class="user-menu">
@@ -189,6 +190,12 @@ h1 {
 @media (max-width: 480px) {
     .user-email {
         display: none;
+    }
+
+    /* Three nav links beside the icon buttons is the tightest this row ever gets, and
+       `.nav` does not wrap. Trimming the padding keeps it on one line at 360px. */
+    .nav-link {
+        padding: 0.35rem 0.5rem;
     }
 
     h1 {

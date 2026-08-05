@@ -20,6 +20,13 @@ const router = createRouter({
         },
         { path: "/study", name: "study", component: () => import("@/views/StudyView.vue") },
         { path: "/progress", name: "progress", component: () => import("@/views/ProgressView.vue") },
+        { path: "/passages", name: "passages", component: () => import("@/views/PassagesView.vue") },
+        {
+            path: "/passages/:id",
+            name: "passage-detail",
+            component: () => import("@/views/PassageDetailView.vue"),
+            props: true,
+        },
         { path: "/settings", name: "settings", component: () => import("@/views/SettingsView.vue") },
         { path: "/:pathMatch(.*)*", redirect: "/study" },
     ],

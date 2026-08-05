@@ -62,7 +62,8 @@ The Astro app keeps serving production until the Vue app is verified.
 current round, plus the per-user daily quota, now live behind `GET /v1/passage` and
 `POST /v1/passage/generate`, with the screen rebuilt in Vue. Both apps read and write the
 same `Meta` cache keys, so a passage generated in one shows up in the other for as long as
-`web-legacy/` is still serving.
+`web-legacy/` is still serving. Every passage the API generates is also titled and kept,
+listed under `/v1/passages` and readable and gradable long after its round has gone.
 
 **Phase 3 — the desktop app.** WinUI 3 against the same contract. See
 [`desktop/README.md`](desktop/README.md) for the decisions already locked in.
@@ -114,6 +115,9 @@ through Google set one via `PUT /v1/me/password`.
 | `GET`  | `/v1/progress/words`       | One bucket's words, paged                                  |
 | `GET`  | `/v1/passage`              | The round, its cached passage, and today's generation quota |
 | `POST` | `/v1/passage/generate`     | Write a new passage for the current round                  |
+| `GET`  | `/v1/passages`             | Saved passages, newest first, paged                        |
+| `GET`  | `/v1/passages/{id}`        | One saved passage and the words it was written from        |
+| `POST` | `/v1/passages/{id}/reviews`| Submit grades for one saved passage                        |
 | `GET`  | `/v1/health`               | Liveness                                                   |
 
 Errors are RFC 9457 problem details, so every client parses failures the same way.
@@ -231,9 +235,16 @@ Two layers of plain SQLite, no ORM.
   the Astro app still reads during the transition.
 - **Per-user vocabulary database** — one file per account, copied from a template at
   registration. Holds the `Word` table (text plus SM-2 state: `ease`, `interval`, `reps`,
-  `due`, `seen`, `first_seen_date`, `shuffle_order`) and a `Meta` key/value table for
-  settings and the passage cache. The schema is brought forward idempotently the first
-  time the API opens each file, so databases the Astro app created just work.
+  `due`, `seen`, `first_seen_date`, `shuffle_order`), a `Meta` key/value table for settings
+  and the passage cache, and a `Passage` table holding every generated passage with its
+  title and date. The schema is brought forward idempotently the first time the API opens
+  each file, so databases the Astro app created just work.
+
+The cache and the history are deliberately separate. `Meta.current_passage` holds at most
+one passage and is retired as soon as the round changes; the `Passage` table keeps them all,
+which is what the Passages screen lists. Grading from a saved passage applies SM-2 exactly
+as the study round does, but leaves the cached passage alone, so a session in progress on
+the Study tab survives.
 
 `tools/csv-importer/` is a standalone Node script that converts a CSV of words into the
 template database. Run `npm install && npm start` inside it, then copy the result to your

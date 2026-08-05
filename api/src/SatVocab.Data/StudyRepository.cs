@@ -86,15 +86,73 @@ public sealed class StudyRepository(VocabDbFactory factory)
     }
 
     /// <summary>
+    /// Read specific words by id, in the order the ids are given. Used by the saved-passage
+    /// screens, where the round that produced the passage is long gone but the words it
+    /// referenced still need their definitions.
+    /// </summary>
+    public async Task<IReadOnlyList<QueueWordResponse>> GetWordsByIdsAsync(
+        string dbPath,
+        IReadOnlyList<long> ids,
+        CancellationToken ct
+    )
+    {
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        await using var connection = await factory.OpenAsync(dbPath, ct);
+
+        // Parameter names are generated, never interpolated from user input.
+        var placeholders = string.Join(",", ids.Select((_, i) => $"@p{i}"));
+        var found = new Dictionary<long, QueueWordResponse>();
+
+        await using (
+            var command = connection.Command(
+                $@"SELECT id, word, definition, example, seen FROM ""Word"" WHERE id IN ({placeholders})",
+                [.. ids.Cast<object?>()]
+            )
+        )
+        await using (var reader = await command.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var id = reader.GetInt64(0);
+                found[id] = new QueueWordResponse(
+                    id,
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetInt32(4) == 0
+                );
+            }
+        }
+
+        // SQL gives no ordering guarantee for an IN list, and the passage's own word order
+        // is the one worth keeping.
+        return [.. ids.Select(id => found.GetValueOrDefault(id)).OfType<QueueWordResponse>()];
+    }
+
+    /// <summary>
     /// Apply SM-2 to each rating and persist the new scheduling state. Ratings for
     /// unknown ids or out-of-range grades are skipped rather than failing the batch.
     /// Returns how many words were actually updated.
     /// </summary>
+    /// <param name="clearPassageCache">
+    /// Whether to drop the Study tab's cached passage. True for the study round, whose
+    /// passage this grading has just invalidated. False when the grades came from a saved
+    /// passage instead: that surface has its own copy, and wiping the cache would cost the
+    /// user the passage they were part-way through on the Study tab. Leaving it is safe
+    /// either way — <see cref="PassageRepository.GetCachedAsync"/> discards a cached passage
+    /// whose word-id set no longer matches the freshly built round, so a stale one
+    /// self-corrects on the next read.
+    /// </param>
     public async Task<int> ApplyReviewsAsync(
         string dbPath,
         IReadOnlyList<ReviewRating> ratings,
         DateOnly today,
-        CancellationToken ct
+        CancellationToken ct,
+        bool clearPassageCache = true
     )
     {
         var graded = ratings.Where(r => Sm2.IsValidGrade(r.Grade)).ToList();
@@ -141,8 +199,11 @@ public sealed class StudyRepository(VocabDbFactory factory)
 
         // The cached passage was written for the previous round, which this grading just
         // invalidated.
-        await MetaStore.DeleteAsync(connection, MetaStore.CurrentPassage, ct);
-        await MetaStore.DeleteAsync(connection, MetaStore.PassageError, ct);
+        if (clearPassageCache)
+        {
+            await MetaStore.DeleteAsync(connection, MetaStore.CurrentPassage, ct);
+            await MetaStore.DeleteAsync(connection, MetaStore.PassageError, ct);
+        }
 
         await transaction.CommitAsync(ct);
         return updated;

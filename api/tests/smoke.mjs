@@ -215,6 +215,24 @@ check("no generations used yet", passage.json?.generationsUsed === 0, String(pas
 const passageNoAuth = await call("/v1/passage");
 check("passage requires auth", passageNoAuth.status === 401, String(passageNoAuth.status));
 
+// --- saved passages ---------------------------------------------------------
+// Nothing has been generated, so the history is empty by construction. What this
+// checks is that the Passage table exists at all: it is created by the schema
+// migration when the API first opens a user database.
+const savedPassages = await call("/v1/passages", { token });
+check("passage list returns a page", savedPassages.status === 200, savedPassages.text.slice(0, 200));
+check("no saved passages yet", savedPassages.json?.total === 0, String(savedPassages.json?.total));
+check("passage list echoes the paging", savedPassages.json?.limit === 10, String(savedPassages.json?.limit));
+
+const clampedPage = await call("/v1/passages?limit=999", { token });
+check("passage list clamps the page size", clampedPage.json?.limit === 50, String(clampedPage.json?.limit));
+
+const missingPassage = await call("/v1/passages/999999", { token });
+check("unknown passage is a 404", missingPassage.status === 404, String(missingPassage.status));
+
+const savedNoAuth = await call("/v1/passages");
+check("passage list requires auth", savedNoAuth.status === 401, String(savedNoAuth.status));
+
 // --- refresh rotation -------------------------------------------------------
 const refreshed = await call("/v1/auth/refresh", {
     method: "POST",

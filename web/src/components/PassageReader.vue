@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import PassageProse from "@/components/PassageProse.vue";
 import type { Passage, QueueWord } from "@/api/types";
 
 /**
  * The other grading surface for the current round: an AI passage that weaves the same
  * words into prose. A word graded here counts for every occurrence in the text, and for
  * its card in the grid — the grade map lives in the parent.
+ *
+ * This component owns the states around a passage — loading, generating, the quota, the
+ * failure — while `PassageProse` renders the passage itself, shared with the saved-passage
+ * screen.
  */
 const props = defineProps<{
     passage: Passage | null;
@@ -18,24 +23,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{ open: [word: QueueWord]; generate: [] }>();
 
-const wordsById = computed(() => new Map(props.words.map((w) => [w.id, w])));
-
 const limit = computed(() => props.passage?.generationsLimit ?? null);
 const remaining = computed(() =>
     limit.value === null ? null : Math.max(0, limit.value - (props.passage?.generationsUsed ?? 0))
 );
 const limitReached = computed(() => remaining.value !== null && remaining.value <= 0);
-
-function tokenClass(wordId: number) {
-    const q = props.picked.get(wordId);
-    if (q === undefined) return { ungraded: props.highlightUngraded };
-    return q >= 3 ? "graded-pass" : "graded-fail";
-}
-
-function openWord(wordId: number) {
-    const word = wordsById.value.get(wordId);
-    if (word) emit("open", word);
-}
 </script>
 
 <template>
@@ -69,23 +61,15 @@ function openWord(wordId: number) {
                 </button>
             </div>
 
-            <div v-if="passage.segments" class="passage-wrap">
-                <p class="passage-hint">Tap an underlined word to rate how well you recall it.</p>
-                <article class="passage-text">
-                    <template v-for="(segment, index) in passage.segments" :key="index">
-                        <button
-                            v-if="segment.wordId !== null"
-                            type="button"
-                            class="vocab"
-                            :class="tokenClass(segment.wordId)"
-                            @click="openWord(segment.wordId)"
-                        >
-                            {{ segment.text }}
-                        </button>
-                        <template v-else>{{ segment.text }}</template>
-                    </template>
-                </article>
-            </div>
+            <PassageProse
+                v-if="passage.segments"
+                :segments="passage.segments"
+                :title="passage.title"
+                :words="words"
+                :picked="picked"
+                :highlight-ungraded="highlightUngraded"
+                @open="emit('open', $event)"
+            />
 
             <div v-else class="generate-state">
                 <div class="done-emoji">{{ limitReached ? "⏳" : passage.error ? "⚠️" : "📖" }}</div>
@@ -145,72 +129,6 @@ function openWord(wordId: number) {
     color: var(--text-gray);
     font-size: 0.85rem;
     margin: 0;
-}
-
-.passage-wrap {
-    width: 100%;
-    max-width: 720px;
-    margin: 0 auto;
-}
-
-.passage-hint {
-    color: var(--text-gray);
-    font-size: 0.9rem;
-    text-align: center;
-    margin-bottom: 1rem;
-}
-
-.passage-text {
-    background-color: var(--card-bg);
-    border-radius: 16px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    padding: 2rem;
-    font-size: 1.15rem;
-    line-height: 1.9;
-    color: var(--text-dark);
-    /* Preserve the paragraph breaks the model produced. */
-    white-space: pre-wrap;
-}
-
-/* Inline, clickable vocabulary token. */
-.vocab {
-    display: inline;
-    font: inherit;
-    color: var(--primary-dark);
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    font-weight: 600;
-    text-decoration: underline;
-    text-decoration-thickness: 2px;
-    text-underline-offset: 2px;
-    border-radius: 4px;
-    transition: background-color 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
-}
-
-.vocab:hover {
-    background-color: #eef2ff;
-}
-
-.vocab.graded-pass {
-    color: #047857;
-    text-decoration-color: #10b981;
-    background-color: #ecfdf5;
-}
-
-.vocab.graded-fail {
-    color: #b91c1c;
-    text-decoration-color: #ef4444;
-    background-color: #fef2f2;
-}
-
-/* The passage-side equivalent of the card grid's red outline: what still needs a grade
-   before this round can be submitted. */
-.vocab.ungraded {
-    text-decoration-style: dashed;
-    text-decoration-color: #ef4444;
 }
 
 .generate-state {
@@ -296,12 +214,5 @@ function openWord(wordId: number) {
     cursor: not-allowed;
     opacity: 0.5;
     color: var(--text-gray);
-}
-
-@media (max-width: 640px) {
-    .passage-text {
-        padding: 1.25rem;
-        font-size: 1.05rem;
-    }
 }
 </style>

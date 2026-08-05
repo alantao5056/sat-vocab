@@ -55,10 +55,40 @@ export interface Passage {
     queue: StudyQueue;
     /** Null when nothing is cached for this round, which is the cue to offer generation. */
     segments: PassageSegment[] | null;
+    /** Null when there is no passage, or when the cached one predates titles. */
+    title: string | null;
     error: string | null;
     generationsUsed: number;
     /** Null when the account is exempt from the daily quota. */
     generationsLimit: number | null;
+}
+
+/** One row of the Passages list. Deliberately just enough to render it. */
+export interface PassageSummary {
+    id: number;
+    title: string;
+    /** The user's local date the passage was generated, `YYYY-MM-DD`. */
+    createdDate: string;
+}
+
+export interface PassageList {
+    total: number;
+    offset: number;
+    limit: number;
+    passages: PassageSummary[];
+}
+
+/**
+ * One passage from the history. Unlike `Passage` it carries no round and no quota — it is
+ * a finished piece of reading, not the current session.
+ */
+export interface SavedPassage {
+    id: number;
+    title: string;
+    createdDate: string;
+    segments: PassageSegment[];
+    /** The words it was written from, in passage order, with their current definitions. */
+    words: QueueWord[];
 }
 
 export interface Grade {

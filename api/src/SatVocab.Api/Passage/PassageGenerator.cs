@@ -9,6 +9,9 @@ namespace SatVocab.Api.Passage;
 /// <summary>Thrown when a passage cannot be produced, carrying a message fit to show the user.</summary>
 public sealed class PassageException(string message) : Exception(message);
 
+/// <summary>A freshly written passage: its title and its ordered segments.</summary>
+public sealed record GeneratedPassage(string Title, IReadOnlyList<PassageSegmentResponse> Segments);
+
 /// <summary>
 /// Generates a short SAT-style reading passage from the words in the user's current round,
 /// with each vocabulary word wrapped so clients can render it as a gradable token.
@@ -36,17 +39,17 @@ public sealed class PassageGenerator(AnthropicOptions options)
           - Example: if the word is "indolent" and you write "indolently", output [[indolent::indolently]]. If you write it unchanged, output [[indolent::indolent]].
         - Only wrap the vocabulary words. Never wrap ordinary words.
 
-        Output ONLY the passage text with the markers. No title, no preamble, no explanation, no markdown formatting.
+        Output format, exactly:
+        - The first line is a short title for the passage: at most 60 characters, plain text, no vocabulary markers, no surrounding quotes, no "Title:" prefix.
+        - Then one blank line.
+        - Then the passage text with the markers, and nothing else. No preamble, no explanation, no markdown formatting.
         """;
 
     private readonly AnthropicClient _client = new() { ApiKey = options.ApiKey };
 
-    /// <summary>Write a passage for <paramref name="words"/> and return it as ordered segments.</summary>
+    /// <summary>Write a passage for <paramref name="words"/> and return its title and segments.</summary>
     /// <exception cref="PassageException">The model failed, declined, or produced unusable text.</exception>
-    public async Task<IReadOnlyList<PassageSegmentResponse>> GenerateAsync(
-        IReadOnlyList<QueueWordResponse> words,
-        CancellationToken ct
-    )
+    public async Task<GeneratedPassage> GenerateAsync(IReadOnlyList<QueueWordResponse> words, CancellationToken ct)
     {
         if (words.Count == 0)
         {
@@ -90,19 +93,38 @@ public sealed class PassageGenerator(AnthropicOptions options)
             text.Append(block.Text);
         }
 
-        var passage = text.ToString().Trim();
-        if (passage.Length == 0)
+        var reply = text.ToString().Trim();
+        if (reply.Length == 0)
         {
             throw new PassageException("The model returned an empty passage.");
         }
 
-        var segments = PassageMarkup.Parse(passage, words);
+        // The title is presentation only, so a model that ignores the format costs a nicer
+        // heading and nothing else — the passage itself is still perfectly usable.
+        var (title, body) = PassageMarkup.SplitTitle(reply);
+
+        var segments = PassageMarkup.Parse(body, words);
         if (!segments.Any(s => s.WordId is not null))
         {
             throw new PassageException("The generated passage did not mark any vocabulary words.");
         }
-        return segments;
+        return new GeneratedPassage(title ?? FallbackTitle(words), segments);
     }
+
+    /// <summary>A title built from the round itself, for when the model did not supply one.</summary>
+    private static string FallbackTitle(IReadOnlyList<QueueWordResponse> words)
+    {
+        var first = Capitalise(words[0].Word);
+        return words.Count switch
+        {
+            1 => first,
+            2 => $"{first} and {Capitalise(words[1].Word)}",
+            _ => $"{first}, {Capitalise(words[1].Word)} and {words.Count - 2} more",
+        };
+    }
+
+    private static string Capitalise(string word) =>
+        word.Length == 0 ? word : char.ToUpperInvariant(word[0]) + word[1..];
 
     /// <summary>The per-request payload: just the words and their definitions.</summary>
     private static string BuildWordList(IReadOnlyList<QueueWordResponse> words)

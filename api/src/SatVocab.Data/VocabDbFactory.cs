@@ -76,8 +76,8 @@ public sealed class VocabDbFactory(SatVocabOptions options)
 
     /// <summary>
     /// Idempotently bring a vocabulary database up to the current SM-2 schema: add any
-    /// missing <c>Word</c> columns, create the <c>Meta</c> key/value table, and add
-    /// supporting indexes.
+    /// missing <c>Word</c> columns, create the <c>Meta</c> and <c>Passage</c> tables, and
+    /// add supporting indexes.
     /// </summary>
     private static async Task EnsureSchemaAsync(SqliteConnection connection)
     {
@@ -122,6 +122,28 @@ public sealed class VocabDbFactory(SatVocabOptions options)
         );
         await connection.ExecuteAsync(
             @"CREATE INDEX IF NOT EXISTS ""Word_seen_idx"" ON ""Word"" (""seen"")",
+            CancellationToken.None
+        );
+
+        // The saved-passage history. Two dates on purpose: created_at orders the list and
+        // is a UTC instant, while created_date is the user's local day (the same shape as
+        // Word.first_seen_date) and is the only one ever shown. The Astro app knows nothing
+        // about this table, which is fine — it never reads it.
+        await connection.ExecuteAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "Passage" (
+                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                "title" TEXT NOT NULL,
+                "created_at" TEXT NOT NULL,
+                "created_date" TEXT NOT NULL,
+                "word_ids" TEXT NOT NULL,
+                "segments" TEXT NOT NULL
+            )
+            """,
+            CancellationToken.None
+        );
+        await connection.ExecuteAsync(
+            @"CREATE INDEX IF NOT EXISTS ""Passage_created_idx"" ON ""Passage"" (""created_at"")",
             CancellationToken.None
         );
     }

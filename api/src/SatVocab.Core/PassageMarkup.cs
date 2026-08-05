@@ -18,6 +18,54 @@ public static partial class PassageMarkup
     private static partial Regex MarkerRegex();
 
     /// <summary>
+    /// A first line longer than this is prose, not a title — the model ran the passage
+    /// straight into the first paragraph break.
+    /// </summary>
+    private const int MaxTitleLength = 100;
+
+    /// <summary>
+    /// Split the model's reply into its title line and the passage body. The title is the
+    /// first line, separated from the body by a blank line.
+    /// </summary>
+    /// <returns>
+    /// The title, or null when the reply carries none — no blank line, an empty or
+    /// multi-line first chunk, an implausibly long first line, or nothing left over for the
+    /// body. A missing title is never fatal: the caller substitutes one, because a passage
+    /// that reads well is worth keeping even when the model ignored the format.
+    /// </returns>
+    public static (string? Title, string Body) SplitTitle(string text)
+    {
+        var normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        var breakIndex = normalized.IndexOf("\n\n", StringComparison.Ordinal);
+        if (breakIndex < 0)
+        {
+            return (null, normalized);
+        }
+
+        var title = normalized[..breakIndex].Trim();
+        var body = normalized[(breakIndex + 2)..].TrimStart('\n');
+
+        // A multi-line first chunk means the break we found is the end of the opening
+        // paragraph, not the end of a title.
+        if (title.Length == 0 || title.Length > MaxTitleLength || title.Contains('\n') || body.Length == 0)
+        {
+            return (null, normalized);
+        }
+
+        // Defensive tidying of the three things models add despite being told not to: a
+        // "Title:" label, surrounding quotes, and vocabulary markers.
+        title = MarkerRegex().Replace(title, match => match.Groups[2].Value);
+        if (title.StartsWith("Title:", StringComparison.OrdinalIgnoreCase))
+        {
+            title = title["Title:".Length..].Trim();
+        }
+        title = title.Trim('"', '“', '”').Trim();
+
+        return (title.Length == 0 ? null : title, body);
+    }
+
+    /// <summary>
     /// Split <paramref name="text"/> into segments. Markers whose base word is in
     /// <paramref name="words"/> become gradable segments; everything else is plain prose.
     /// </summary>

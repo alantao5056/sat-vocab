@@ -66,6 +66,20 @@ fs.createReadStream(csvPath)
         // Key/value table for per-user settings (e.g. daily new-word cap).
         await db.execute('CREATE TABLE IF NOT EXISTS "Meta" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)');
 
+        // History of AI-generated reading passages. Kept in step with the API's
+        // VocabDbFactory.EnsureSchemaAsync, which creates the same table on older files.
+        await db.execute(`
+        CREATE TABLE IF NOT EXISTS "Passage" (
+            "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+            "title" TEXT NOT NULL,
+            "created_at" TEXT NOT NULL,
+            "created_date" TEXT NOT NULL,
+            "word_ids" TEXT NOT NULL,
+            "segments" TEXT NOT NULL
+        )
+    `);
+        await db.execute('CREATE INDEX IF NOT EXISTS "Passage_created_idx" ON "Passage" ("created_at")');
+
         // Clear existing
         await db.execute('DELETE FROM "Word"');
 
