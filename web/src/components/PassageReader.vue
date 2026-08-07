@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import AppLogo from "@/components/AppLogo.vue";
 import PassageProse from "@/components/PassageProse.vue";
 import type { Passage, QueueWord } from "@/api/types";
 
@@ -72,7 +73,8 @@ const limitReached = computed(() => remaining.value !== null && remaining.value 
             />
 
             <div v-else class="generate-state">
-                <div class="done-emoji">{{ limitReached ? "⏳" : passage.error ? "⚠️" : "📖" }}</div>
+                <AppLogo v-if="!limitReached && !passage.error" class="empty-logo" :size="48" />
+                <div v-else class="done-emoji">{{ limitReached ? "⏳" : "⚠️" }}</div>
                 <h2>
                     {{
                         limitReached
@@ -145,6 +147,10 @@ const limitReached = computed(() => remaining.value !== null && remaining.value 
 .done-emoji {
     font-size: 3rem;
     line-height: 1;
+}
+
+:deep(.empty-logo) {
+    color: var(--primary-blue);
 }
 
 .generate-state h2 {

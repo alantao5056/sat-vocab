@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppHeader from "@/components/AppHeader.vue";
+import AppLogo from "@/components/AppLogo.vue";
 import { apiGet } from "@/api/client";
 import type { PassageList, PassageSummary } from "@/api/types";
 
@@ -68,7 +69,7 @@ onBeforeUnmount(() => document.body.classList.remove("no-scroll"));
         <div v-if="loading" class="loading-state">Loading your passages…</div>
 
         <div v-else-if="total === 0" class="empty-state">
-            <div class="empty-emoji">📖</div>
+            <AppLogo class="empty-logo" :size="48" />
             <h2>No passages yet</h2>
             <p>Generate one from the Passage tab of a study session and it will be kept here.</p>
             <RouterLink to="/study" class="submit-btn empty-cta">Go to Study</RouterLink>
@@ -205,9 +206,8 @@ main {
     gap: 1rem;
 }
 
-.empty-emoji {
-    font-size: 3rem;
-    line-height: 1;
+:deep(.empty-logo) {
+    color: var(--primary-blue);
 }
 
 .empty-state h2 {
