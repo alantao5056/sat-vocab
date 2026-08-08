@@ -6,7 +6,8 @@ namespace SatVocab.Data;
 /// <summary>
 /// The Mastered / Learning / Due / Unseen board. Counts and word lists are fetched
 /// separately: a full deck is ~3,000 words and clients only need the list once the
-/// user opens a bucket.
+/// user opens a bucket. Unseen is counted but never listed — it is most of the deck,
+/// so the count is all that is worth showing.
 /// </summary>
 public sealed class ProgressRepository(VocabDbFactory factory)
 {
@@ -70,14 +71,12 @@ public sealed class ProgressRepository(VocabDbFactory factory)
 
         var total = await connection.CountAsync($@"SELECT COUNT(*) FROM ""Word"" WHERE {where}", ct, args);
 
-        // Unseen words have no due date, so ordering by it would be meaningless.
-        var order = bucket == ProgressBuckets.Unseen ? "word ASC" : "due ASC, word ASC";
         object?[] pageArgs = [.. args, limit, offset];
 
         var words = new List<ProgressWordResponse>();
         await using (
             var command = connection.Command(
-                $@"SELECT word, due FROM ""Word"" WHERE {where} ORDER BY {order} LIMIT @p{args.Length} OFFSET @p{args.Length + 1}",
+                $@"SELECT word, due FROM ""Word"" WHERE {where} ORDER BY due ASC, word ASC LIMIT @p{args.Length} OFFSET @p{args.Length + 1}",
                 pageArgs
             )
         )

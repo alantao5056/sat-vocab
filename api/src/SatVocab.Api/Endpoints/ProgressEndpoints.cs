@@ -35,10 +35,10 @@ public static class ProgressEndpoints
         int limit = 100
     )
     {
-        if (!ProgressBuckets.All.Contains(bucket))
+        if (!ProgressBuckets.Listable.Contains(bucket))
         {
             return Results.Problem(
-                detail: $"Unknown bucket '{bucket}'. Expected one of: {string.Join(", ", ProgressBuckets.All)}.",
+                detail: $"Unknown bucket '{bucket}'. Expected one of: {string.Join(", ", ProgressBuckets.Listable)}.",
                 statusCode: StatusCodes.Status400BadRequest
             );
         }

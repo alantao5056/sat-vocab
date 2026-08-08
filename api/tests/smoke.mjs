@@ -156,6 +156,8 @@ const words = await call("/v1/progress/words?bucket=learning&limit=3", { token }
 check("progress words paged", words.json?.words?.length === 3 && words.json?.total === 5, words.text.slice(0, 200));
 const badBucket = await call("/v1/progress/words?bucket=nonsense", { token });
 check("unknown bucket rejected", badBucket.status === 400, String(badBucket.status));
+const unseenList = await call("/v1/progress/words?bucket=unseen", { token });
+check("unseen bucket not listable", unseenList.status === 400, String(unseenList.status));
 
 // --- settings ---------------------------------------------------------------
 const settings = await call("/v1/settings", { token });

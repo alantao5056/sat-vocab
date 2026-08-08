@@ -112,7 +112,7 @@ through Google set one via `PUT /v1/me/password`.
 | `GET`  | `/v1/settings`             | Current settings **and** the allowed option sets           |
 | `PUT`  | `/v1/settings`             | Update new-words-per-day, words-per-round, time zone       |
 | `GET`  | `/v1/progress`             | Bucket counts and the mastered percentage                  |
-| `GET`  | `/v1/progress/words`       | One bucket's words, paged                                  |
+| `GET`  | `/v1/progress/words`       | One listable bucket's words, paged (mastered/learning/due) |
 | `GET`  | `/v1/passage`              | The round, its cached passage, and today's generation quota |
 | `POST` | `/v1/passage/generate`     | Write a new passage for the current round                  |
 | `GET`  | `/v1/passages`             | Saved passages, newest first, paged                        |
@@ -127,8 +127,10 @@ Two deliberate contract choices worth knowing:
 - **The server owns the option sets.** `GET /v1/settings` returns the intensity presets,
   round sizes, and the six grade buttons. Clients render what they are given rather than
   hard-coding the scale in three places.
-- **Progress counts and word lists are separate calls.** The unseen bucket is most of a
-  3,000-word deck; it is fetched only when the user opens it.
+- **Progress counts and word lists are separate calls.** Counts cover all four buckets;
+  the mastered, learning, and due lists are fetched only when the user opens one. The
+  unseen bucket is counted but never listed — it is most of a 3,000-word deck, so the
+  count is all that is worth showing, and `/v1/progress/words?bucket=unseen` is a 400.
 
 ## How the scheduling works
 

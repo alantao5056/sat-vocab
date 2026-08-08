@@ -13,6 +13,11 @@ const ACCENTS: Record<string, string> = {
 };
 const PAGE_SIZE = 200;
 
+/** The unseen bucket is most of the deck; its count is all that is worth showing. */
+function isListable(bucket: ProgressBucket) {
+    return bucket.key !== "unseen";
+}
+
 const progress = ref<Progress | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -32,11 +37,10 @@ onMounted(async () => {
     }
 });
 
-/**
- * Word lists are fetched on demand rather than up front — the unseen bucket alone is
- * most of a ~3,000 word deck.
- */
+/** Word lists are fetched on demand rather than up front — a full deck is ~3,000 words. */
 async function openList(bucket: ProgressBucket) {
+    if (!isListable(bucket)) return;
+
     openBucket.value = bucket;
     words.value = [];
     wordsTotal.value = bucket.count;
@@ -72,7 +76,8 @@ async function openList(bucket: ProgressBucket) {
             </div>
 
             <div class="stats-grid">
-                <button
+                <component
+                    :is="isListable(bucket) ? 'button' : 'div'"
                     v-for="bucket in progress.buckets"
                     :key="bucket.key"
                     class="stat-tile"
@@ -81,7 +86,7 @@ async function openList(bucket: ProgressBucket) {
                 >
                     <span class="stat-value">{{ bucket.count }}</span>
                     <span class="stat-label">{{ bucket.title }}</span>
-                </button>
+                </component>
             </div>
         </template>
     </main>
@@ -177,12 +182,16 @@ main {
     border-radius: 14px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     padding: 1rem 0.5rem;
-    cursor: pointer;
     transition: box-shadow 0.2s ease;
     -webkit-tap-highlight-color: transparent;
 }
 
-.stat-tile:hover {
+/* Only the listable buckets open a modal, so only they get a click affordance. */
+button.stat-tile {
+    cursor: pointer;
+}
+
+button.stat-tile:hover {
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 

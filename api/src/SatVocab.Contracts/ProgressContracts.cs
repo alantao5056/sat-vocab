@@ -9,18 +9,21 @@ public static class ProgressBuckets
     public const string Unseen = "unseen";
 
     public static readonly IReadOnlyList<string> All = [Mastered, Learning, Due, Unseen];
+
+    /// <summary>Buckets whose words can be listed. Unseen is counted but never listed.</summary>
+    public static readonly IReadOnlyList<string> Listable = [Mastered, Learning, Due];
 }
 
 public sealed record ProgressBucketResponse(string Key, string Title, int Count);
 
 /// <summary>
-/// Counts only. The word lists are paged separately through
-/// <c>GET /v1/progress/words</c> — a full deck is ~3,000 words and clients only
-/// need them when the user opens a bucket.
+/// Counts for all four buckets. The word lists are paged separately through
+/// <c>GET /v1/progress/words</c>, which serves only <see cref="ProgressBuckets.Listable"/>
+/// — clients fetch a list when the user opens a bucket.
 /// </summary>
 public sealed record ProgressResponse(int Total, int MasteredPercent, IReadOnlyList<ProgressBucketResponse> Buckets);
 
-/// <param name="Due">Local "YYYY-MM-DD" date, or null for never-seen words.</param>
+/// <param name="Due">Local "YYYY-MM-DD" date. Null only if the column was never written.</param>
 public sealed record ProgressWordResponse(string Word, string? Due);
 
 public sealed record ProgressWordsResponse(
