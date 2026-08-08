@@ -2,7 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppHeader from "@/components/AppHeader.vue";
 import AppLogo from "@/components/AppLogo.vue";
-import { apiGet } from "@/api/client";
+import DeletePassageModal from "@/components/DeletePassageModal.vue";
+import IconMore from "@/components/IconMore.vue";
+import { ApiError, apiGet, apiSend } from "@/api/client";
 import type { PassageList, PassageSummary } from "@/api/types";
 
 /**
@@ -36,6 +38,59 @@ async function loadMore() {
     loadingMore.value = true;
     await load(passages.value.length);
     loadingMore.value = false;
+}
+
+/** The row whose ⋮ menu is open — at most one at a time. */
+const menuId = ref<number | null>(null);
+/** The row awaiting confirmation, which is also what opens the modal. */
+const pending = ref<PassageSummary | null>(null);
+const deleting = ref(false);
+
+function toggleMenu(id: number) {
+    menuId.value = menuId.value === id ? null : id;
+}
+
+function askDelete(passage: PassageSummary) {
+    menuId.value = null;
+    pending.value = passage;
+}
+
+/**
+ * Drop the row without refetching. `total` has to come down with it: it is what decides the
+ * empty state and, with the row count, whether there is more to load. Keeping the two in
+ * step also keeps paging honest — `loadMore` sends the loaded count as its offset, and the
+ * server's list has shifted down by exactly the one row we removed.
+ */
+function removeLocally(id: number) {
+    const index = passages.value.findIndex((p) => p.id === id);
+    if (index === -1) return;
+    passages.value.splice(index, 1);
+    total.value -= 1;
+}
+
+async function confirmDelete() {
+    const passage = pending.value;
+    if (!passage) return;
+
+    deleting.value = true;
+    error.value = null;
+    try {
+        await apiSend<void>(`/v1/passages/${passage.id}`, "DELETE");
+        removeLocally(passage.id);
+    } catch (e) {
+        // Already gone, deleted from another tab or device. The user wanted it gone and it
+        // is gone, so drop the row rather than report a failure they cannot act on.
+        if (e instanceof ApiError && e.status === 404) removeLocally(passage.id);
+        else error.value = (e as Error).message;
+    }
+
+    // Clearing out everything that was loaded would otherwise leave an empty card sitting
+    // above a "Load more" button. Pull the next page in rather than make the user ask.
+    // Only reachable when the delete succeeded — a failure leaves its row in place.
+    if (passages.value.length === 0 && total.value > 0) await load(0);
+
+    deleting.value = false;
+    pending.value = null;
 }
 
 /** `createdDate` is a plain local `YYYY-MM-DD`, so it is read as parts, never as an instant. */
@@ -77,15 +132,28 @@ onBeforeUnmount(() => document.body.classList.remove("no-scroll"));
 
         <div v-else class="list-wrap">
             <div class="passage-list">
-                <RouterLink
-                    v-for="passage in passages"
-                    :key="passage.id"
-                    :to="`/passages/${passage.id}`"
-                    class="passage-row"
-                >
-                    <span class="p-title">{{ passage.title }}</span>
-                    <span class="p-date">{{ formatDate(passage.createdDate) }}</span>
-                </RouterLink>
+                <div v-for="passage in passages" :key="passage.id" class="passage-item">
+                    <RouterLink :to="`/passages/${passage.id}`" class="passage-row">
+                        <span class="p-title">{{ passage.title }}</span>
+                        <span class="p-date">{{ formatDate(passage.createdDate) }}</span>
+                    </RouterLink>
+
+                    <button
+                        type="button"
+                        class="row-menu-btn"
+                        aria-label="Passage actions"
+                        :aria-expanded="menuId === passage.id"
+                        @click="toggleMenu(passage.id)"
+                    >
+                        <IconMore :size="18" />
+                    </button>
+
+                    <div v-if="menuId === passage.id" class="row-menu" role="menu">
+                        <button type="button" class="row-menu-item" role="menuitem" @click="askDelete(passage)">
+                            Delete
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <button v-if="hasMore" class="load-more-btn" type="button" :disabled="loadingMore" @click="loadMore">
@@ -93,6 +161,19 @@ onBeforeUnmount(() => document.body.classList.remove("no-scroll"));
             </button>
         </div>
     </main>
+
+    <!-- Catches the next click anywhere to close the menu. The modals dismiss the same way,
+         via `@click.self` on their overlay, and on touch a tap outside is far less ambiguous
+         than trying to infer "clicked away" from a document listener. -->
+    <div v-if="menuId !== null" class="menu-backdrop" @click="menuId = null"></div>
+
+    <DeletePassageModal
+        :open="pending !== null"
+        :title="pending?.title ?? ''"
+        :busy="deleting"
+        @confirm="confirmDelete"
+        @cancel="pending = null"
+    />
 </template>
 
 <style scoped>
@@ -129,7 +210,33 @@ main {
     background-color: var(--card-bg);
     border-radius: 16px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    overflow: hidden;
+    /* Deliberately not `overflow: hidden` — that would clip the row menus. The ends are
+       rounded on the rows themselves instead. */
+}
+
+/* The row is a link, so its menu button has to be a sibling rather than a child: a button
+   inside an anchor is neither valid nor operable. */
+.passage-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    transition: background-color 0.15s ease;
+}
+
+.passage-item:first-child {
+    border-radius: 16px 16px 0 0;
+}
+
+.passage-item:last-child {
+    border-radius: 0 0 16px 16px;
+}
+
+.passage-item:nth-child(odd) {
+    background-color: var(--bg-light);
+}
+
+.passage-item:hover {
+    background-color: #eef2ff;
 }
 
 .passage-row {
@@ -137,19 +244,83 @@ main {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.85rem 1rem;
+    /* The menu button supplies the spacing on the right edge. */
+    padding: 0.85rem 0.25rem 0.85rem 1rem;
+    flex: 1;
+    min-width: 0;
     text-decoration: none;
     color: inherit;
-    transition: background-color 0.15s ease;
     -webkit-tap-highlight-color: transparent;
 }
 
-.passage-row:nth-child(odd) {
-    background-color: var(--bg-light);
+.row-menu-btn {
+    flex-shrink: 0;
+    /* Comfortably tappable on a phone, where this is the only way to reach the menu. */
+    min-width: 40px;
+    min-height: 40px;
+    margin-right: 0.35rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-gray);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: color 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
 }
 
-.passage-row:hover {
-    background-color: #eef2ff;
+.row-menu-btn:hover {
+    color: var(--primary-blue);
+}
+
+.row-menu {
+    position: absolute;
+    right: 0.5rem;
+    /* Anchored to the right edge, so it opens inward and can never leave the viewport. */
+    top: calc(100% - 0.35rem);
+    z-index: 20;
+    min-width: 9rem;
+    padding: 0.25rem;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+/* The last row has nothing below it to open into, so its menu opens upward. */
+.passage-item:last-child .row-menu {
+    top: auto;
+    bottom: calc(100% - 0.35rem);
+}
+
+.row-menu-item {
+    display: block;
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    background: none;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-align: left;
+    color: #ef4444;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.row-menu-item:hover {
+    background-color: #fef2f2;
+}
+
+/* Above the header, which sits at `z-index: 10`, so a click up there closes the menu too —
+   but below the menu itself. */
+.menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
 }
 
 .p-title {
@@ -228,5 +399,13 @@ main {
     text-decoration: none;
     text-align: center;
     display: inline-block;
+}
+
+@media (max-width: 480px) {
+    /* The menu button costs the row 40px. Tightening the gap is what keeps a title
+       readable rather than ellipsised down to a few characters at 360px. */
+    .passage-row {
+        gap: 0.5rem;
+    }
 }
 </style>

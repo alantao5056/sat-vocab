@@ -185,6 +185,23 @@ public sealed class PassageRepository(VocabDbFactory factory)
         }
     }
 
+    /// <summary>
+    /// Remove one passage from the user's history.
+    /// </summary>
+    /// <remarks>
+    /// The round cache and the daily quota are deliberately left alone. The cache is keyed
+    /// by word-id set and holds no passage id, so it cannot be correlated with a history
+    /// row anyway — and dropping it would cost the user the passage open on their Study
+    /// tab. The quota is charged per generation attempt rather than per stored row, so
+    /// refunding it here would make the daily limit trivial to bypass.
+    /// </remarks>
+    /// <returns>False when the id is not this user's, so the caller can 404 without a second read.</returns>
+    public async Task<bool> DeleteAsync(string dbPath, long id, CancellationToken ct)
+    {
+        await using var connection = await factory.OpenAsync(dbPath, ct);
+        return await connection.ExecuteAsync(@"DELETE FROM ""Passage"" WHERE id = @p0", ct, id) > 0;
+    }
+
     /// <summary>The last generation failure, or null.</summary>
     public async Task<string?> GetErrorAsync(string dbPath, CancellationToken ct)
     {

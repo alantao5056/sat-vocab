@@ -25,6 +25,7 @@ public static class PassageEndpoints
         saved.MapGet("/", ListPassagesAsync);
         saved.MapGet("/{id:long}", GetSavedPassageAsync);
         saved.MapPost("/{id:long}/reviews", SubmitPassageReviewsAsync);
+        saved.MapDelete("/{id:long}", DeleteSavedPassageAsync);
     }
 
     private static async Task<IResult> GetPassageAsync(
@@ -200,6 +201,19 @@ public static class PassageEndpoints
             clearPassageCache: false
         );
         return Results.Ok(new SubmitReviewsResponse(updated));
+    }
+
+    private static async Task<IResult> DeleteSavedPassageAsync(
+        long id,
+        CurrentUser current,
+        PassageRepository passages,
+        CancellationToken ct
+    )
+    {
+        // Nothing else to check: the per-user database file *is* the ownership boundary, so
+        // an id that is not in it simply does not exist as far as this account is concerned.
+        var user = await current.RequireAsync(ct);
+        return await passages.DeleteAsync(user.DbPath, id, ct) ? Results.NoContent() : NotFound(id);
     }
 
     private static IResult NotFound(long id) =>

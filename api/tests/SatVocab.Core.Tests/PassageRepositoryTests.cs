@@ -262,6 +262,98 @@ public class PassageRepositoryTests : IDisposable
         Assert.NotNull(await repository.GetByIdAsync(DbName, id, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task DeletingAPassageRemovesOnlyThatOne()
+    {
+        var repository = NewRepository();
+        var today = new DateOnly(2026, 8, 4);
+
+        var doomed = await repository.AddAsync(
+            DbName,
+            "Doomed",
+            today,
+            [1],
+            [new PassageSegmentResponse("t", 1)],
+            CancellationToken.None
+        );
+        var kept = await repository.AddAsync(
+            DbName,
+            "Kept",
+            today,
+            [2],
+            [new PassageSegmentResponse("u", 2)],
+            CancellationToken.None
+        );
+
+        Assert.True(await repository.DeleteAsync(DbName, doomed, CancellationToken.None));
+
+        Assert.Null(await repository.GetByIdAsync(DbName, doomed, CancellationToken.None));
+        Assert.NotNull(await repository.GetByIdAsync(DbName, kept, CancellationToken.None));
+
+        var list = await repository.ListAsync(DbName, offset: 0, limit: 10, CancellationToken.None);
+        Assert.Equal(1, list.Total);
+        Assert.Equal(["Kept"], list.Passages.Select(p => p.Title));
+    }
+
+    /// <summary>False rather than an exception: that is what lets the endpoint 404 without a second read.</summary>
+    [Fact]
+    public async Task DeletingAnUnknownPassageReportsMissing()
+    {
+        var repository = NewRepository();
+        Assert.False(await repository.DeleteAsync(DbName, 404, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// The mirror of <see cref="HistorySurvivesTheCacheBeingReplaced"/>: tidying the history
+    /// must not cost the user the passage open on their Study tab. The cache is keyed by
+    /// word-id set and holds no passage id, so the two are unrelated by construction — this
+    /// pins that they stay that way.
+    /// </summary>
+    [Fact]
+    public async Task DeletingFromHistoryLeavesTheRoundCacheAlone()
+    {
+        var repository = NewRepository();
+        var today = new DateOnly(2026, 8, 4);
+
+        var id = await repository.AddAsync(
+            DbName,
+            "Doomed",
+            today,
+            [1],
+            [new PassageSegmentResponse("t", 1)],
+            CancellationToken.None
+        );
+        await repository.SaveAsync(DbName, [1], [new PassageSegmentResponse("t", 1)], "Doomed", CancellationToken.None);
+
+        await repository.DeleteAsync(DbName, id, CancellationToken.None);
+
+        var cached = await repository.GetCachedAsync(DbName, [1], CancellationToken.None);
+        Assert.NotNull(cached);
+        Assert.Equal("Doomed", cached.Value.Title);
+    }
+
+    /// <summary>A delete is not a refund: quota is charged per attempt, not per stored row.</summary>
+    [Fact]
+    public async Task DeletingFromHistoryDoesNotRefundTheDailyQuota()
+    {
+        var repository = NewRepository();
+        var today = new DateOnly(2026, 8, 4);
+
+        await repository.RecordGenerationAsync(DbName, today, CancellationToken.None);
+        var id = await repository.AddAsync(
+            DbName,
+            "Doomed",
+            today,
+            [1],
+            [new PassageSegmentResponse("t", 1)],
+            CancellationToken.None
+        );
+
+        await repository.DeleteAsync(DbName, id, CancellationToken.None);
+
+        Assert.Equal(1, await repository.GetGenerationsTodayAsync(DbName, today, CancellationToken.None));
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();

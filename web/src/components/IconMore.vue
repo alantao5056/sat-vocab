@@ -1,0 +1,18 @@
+<script setup lang="ts">
+defineProps<{ size?: number | string }>();
+</script>
+
+<template>
+    <svg
+        :width="size"
+        :height="size"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        stroke="none"
+    >
+        <circle cx="12" cy="5" r="1.75" />
+        <circle cx="12" cy="12" r="1.75" />
+        <circle cx="12" cy="19" r="1.75" />
+    </svg>
+</template>

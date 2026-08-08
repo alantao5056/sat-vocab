@@ -235,6 +235,14 @@ check("unknown passage is a 404", missingPassage.status === 404, String(missingP
 const savedNoAuth = await call("/v1/passages");
 check("passage list requires auth", savedNoAuth.status === 401, String(savedNoAuth.status));
 
+// Nothing can be generated without an Anthropic key, so the delete route is exercised
+// against ids that are not this account's — which is the whole of its failure surface.
+const deleteMissing = await call("/v1/passages/999999", { token, method: "DELETE" });
+check("deleting an unknown passage is a 404", deleteMissing.status === 404, String(deleteMissing.status));
+
+const deleteNoAuth = await call("/v1/passages/1", { method: "DELETE" });
+check("passage delete requires auth", deleteNoAuth.status === 401, String(deleteNoAuth.status));
+
 // --- refresh rotation -------------------------------------------------------
 const refreshed = await call("/v1/auth/refresh", {
     method: "POST",

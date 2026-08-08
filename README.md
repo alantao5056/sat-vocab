@@ -118,6 +118,7 @@ through Google set one via `PUT /v1/me/password`.
 | `GET`  | `/v1/passages`             | Saved passages, newest first, paged                        |
 | `GET`  | `/v1/passages/{id}`        | One saved passage and the words it was written from        |
 | `POST` | `/v1/passages/{id}/reviews`| Submit grades for one saved passage                        |
+| `DELETE` | `/v1/passages/{id}`      | Remove one saved passage from the history                  |
 | `GET`  | `/v1/health`               | Liveness                                                   |
 
 Errors are RFC 9457 problem details, so every client parses failures the same way.
@@ -246,7 +247,9 @@ The cache and the history are deliberately separate. `Meta.current_passage` hold
 one passage and is retired as soon as the round changes; the `Passage` table keeps them all,
 which is what the Passages screen lists. Grading from a saved passage applies SM-2 exactly
 as the study round does, but leaves the cached passage alone, so a session in progress on
-the Study tab survives.
+the Study tab survives. Deleting a passage follows the same rule in reverse: it removes the
+`Passage` row and nothing else, leaving the cache and the day's generation count untouched —
+quota is charged per generation attempt, not per stored row.
 
 `tools/csv-importer/` is a standalone Node script that converts a CSV of words into the
 template database. Run `npm install && npm start` inside it, then copy the result to your
