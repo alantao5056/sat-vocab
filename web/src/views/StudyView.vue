@@ -117,9 +117,23 @@ function grade(wordId: number, q: number) {
     highlightUngraded.value = false;
 }
 
+/**
+ * Runs `work` after the browser has painted the current state. Both study panels stay
+ * mounted, so re-rendering them is expensive; committing that in the same flush as a
+ * modal close puts a full style recalc on the animation's first frame. Vue flushes the
+ * DOM in a microtask, which still lands in the same frame as a single rAF — hence two.
+ *
+ * Local UI state only: a hidden tab pauses rAF, so nothing that must reach the server
+ * (`send`, and therefore `markAll`) may be deferred through here.
+ */
+function afterPaint(work: () => void) {
+    requestAnimationFrame(() => requestAnimationFrame(work));
+}
+
 function gradeFromModal(q: number) {
-    if (activeWord.value) grade(activeWord.value.id, q);
+    const word = activeWord.value;
     activeWord.value = null;
+    if (word) afterPaint(() => grade(word.id, q));
 }
 
 async function submit() {

@@ -66,9 +66,22 @@ function grade(wordId: number, q: number) {
     highlightUngraded.value = false;
 }
 
+/**
+ * Runs `work` after the browser has painted the current state, so that re-rendering the
+ * passage's tokens does not land on the first frame of the modal's close animation. Vue
+ * flushes the DOM in a microtask, which still shares a frame with a single rAF.
+ *
+ * Local UI state only: a hidden tab pauses rAF, so nothing that must reach the server
+ * (`send`, and therefore `markAll`) may be deferred through here.
+ */
+function afterPaint(work: () => void) {
+    requestAnimationFrame(() => requestAnimationFrame(work));
+}
+
 function gradeFromModal(q: number) {
-    if (activeWord.value) grade(activeWord.value.id, q);
+    const word = activeWord.value;
     activeWord.value = null;
+    if (word) afterPaint(() => grade(word.id, q));
 }
 
 async function submit() {
